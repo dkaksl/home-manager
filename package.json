@@ -1,0 +1,29 @@
+{
+  "name": "hue-manager",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "create-user": "ts-node bin/create-user.ts",
+    "fetch-bridge-details": "ts-node bin/fetch-bridge-details.ts",
+    "mood-lights": "ts-node bin/mood-lights.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "prettier": {
+    "semi": false,
+    "singleQuote": true,
+    "trailingComma": "none"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "node-fetch": "^2.7.0"
+  },
+  "devDependencies": {
+    "@types/node-fetch": "^2.6.11",
+    "envalid": "^8.0.0",
+    "ts-node": "^10.9.2"
+  }
+}
