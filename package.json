@@ -12,6 +12,9 @@
     "client": "npm run dev --prefix client",
     "dev": "concurrently \"npm run server\" \"npm run client\""
   },
+  "engines": {
+    "node": ">=24"
+  },
   "keywords": [],
   "author": "",
   "license": "ISC",
