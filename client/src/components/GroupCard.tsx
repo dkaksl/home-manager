@@ -20,8 +20,35 @@ const CLASS_ICONS: Record<string, string> = {
 
 const classIcon = (cls: string) => CLASS_ICONS[cls] ?? '💡'
 
-// Scenes surfaced at top level; everything else collapses under "More"
-const PINNED = new Set(['Natural light', 'Rest', 'Nightlight'])
+const SCENE_PRIORITY = ['Natural light', 'Read', 'Reading', 'Rest', 'Nightlight']
+
+const SCENE_ICONS: Record<string, string> = {
+  'Natural light': '☀️',
+  'Read': '📖',
+  'Reading': '📖',
+  'Rest': '😌',
+  'Nightlight': '🌙',
+  'Concentrate': '🎯',
+  'Energize': '⚡',
+  'Bright': '💡',
+  'Dimmed': '🕯',
+  'Relax': '🛋',
+  'TV time': '📺',
+  'Savanna sunset': '🌅',
+  'Tropical twilight': '🌺',
+}
+
+const sceneIcon = (name: string) => SCENE_ICONS[name] ?? '✨'
+
+const sortScenes = (scenes: Scene[]): Scene[] =>
+  [...scenes].sort((a, b) => {
+    const ai = SCENE_PRIORITY.indexOf(a.name)
+    const bi = SCENE_PRIORITY.indexOf(b.name)
+    if (ai === -1 && bi === -1) return a.name.localeCompare(b.name)
+    if (ai === -1) return 1
+    if (bi === -1) return -1
+    return ai - bi
+  })
 
 interface Props {
   group: Group
@@ -34,12 +61,14 @@ export function GroupCard({ group, zones, scenes = [], onUpdate }: Props) {
   const { id, name, type, class: cls, state, lightDetails } = group
   const isOn = state.any_on
 
+  const [lightsOpen, setLightsOpen] = useState(false)
   const [zonesOpen, setZonesOpen] = useState(false)
   const [moreOpen, setMoreOpen] = useState(false)
   const [activeSceneId, setActiveSceneId] = useState<string | null>(null)
 
-  const pinnedScenes = scenes.filter(s => PINNED.has(s.name))
-  const moreScenes = scenes.filter(s => !PINNED.has(s.name))
+  const sorted = sortScenes(scenes)
+  const visibleScenes = sorted.slice(0, 3)
+  const moreScenes = sorted.slice(3)
 
   const handleGroupToggle = async () => {
     const next = !isOn
@@ -100,71 +129,84 @@ export function GroupCard({ group, zones, scenes = [], onUpdate }: Props) {
         </button>
       </div>
 
-      <ul className="light-list">
-        {lightDetails.map(light => (
-          <li
-            key={light.id}
-            className={`light-row ${light.state.on ? 'light-row--on' : ''} ${!light.state.reachable ? 'light-row--unreachable' : ''}`}
-          >
-            <span className="light-row__dot" />
-            <span className="light-row__name">{light.name}</span>
-            {!light.state.reachable && (
-              <span className="light-row__badge">unreachable</span>
-            )}
-            <button
-              className={`toggle toggle--light ${light.state.on ? 'toggle--on' : ''}`}
-              onClick={() => handleLightToggle(light.id, light.state.on)}
-              disabled={!light.state.reachable}
-              title={light.state.on ? 'Turn off' : 'Turn on'}
-            >
-              <span className="toggle__track">
-                <span className="toggle__thumb" />
-              </span>
-            </button>
-          </li>
-        ))}
-        {lightDetails.length === 0 && (
-          <li className="light-list__empty">No lights</li>
-        )}
-      </ul>
-
       {scenes.length > 0 && (
         <div className="scene-section">
-          <div className="scene-row">
-            {pinnedScenes.map(scene => (
+          <div className="scene-grid">
+            {visibleScenes.map(scene => (
               <button
                 key={scene.id}
-                className={`scene-pill ${activeSceneId === scene.id ? 'scene-pill--active' : ''}`}
+                className={`scene-btn ${activeSceneId === scene.id ? 'scene-btn--active' : ''}`}
                 onClick={() => handleSceneActivate(scene)}
               >
-                {scene.name}
+                <span className="scene-btn__icon">{sceneIcon(scene.name)}</span>
+                <span className="scene-btn__label">{scene.name}</span>
               </button>
             ))}
             {moreScenes.length > 0 && (
               <button
-                className={`scene-pill scene-pill--more ${moreOpen ? 'scene-pill--more-open' : ''}`}
+                className={`scene-btn scene-btn--more ${moreOpen ? 'scene-btn--more-open' : ''}`}
                 onClick={() => setMoreOpen(o => !o)}
               >
-                More
-                <span className={`chevron ${moreOpen ? 'chevron--open' : ''}`}>›</span>
+                <span className="scene-btn__icon">{moreOpen ? '✕' : '···'}</span>
+                <span className="scene-btn__label">{moreOpen ? 'Less' : 'More'}</span>
               </button>
             )}
           </div>
           {moreOpen && (
-            <div className="scene-row scene-row--more">
+            <div className="scene-grid scene-grid--more">
               {moreScenes.map(scene => (
                 <button
                   key={scene.id}
-                  className={`scene-pill ${activeSceneId === scene.id ? 'scene-pill--active' : ''}`}
+                  className={`scene-btn ${activeSceneId === scene.id ? 'scene-btn--active' : ''}`}
                   onClick={() => handleSceneActivate(scene)}
                 >
-                  {scene.name}
+                  <span className="scene-btn__icon">{sceneIcon(scene.name)}</span>
+                  <span className="scene-btn__label">{scene.name}</span>
                 </button>
               ))}
             </div>
           )}
         </div>
       )}
+
+      <div className="lights-section">
+        <button
+          className="lights-section__toggle"
+          onClick={() => setLightsOpen(o => !o)}
+        >
+          <span>Lights ({lightDetails.length})</span>
+          <span className={`chevron ${lightsOpen ? 'chevron--open' : ''}`}>›</span>
+        </button>
+        {lightsOpen && (
+          <ul className="light-list">
+            {lightDetails.map(light => (
+              <li
+                key={light.id}
+                className={`light-row ${light.state.on ? 'light-row--on' : ''} ${!light.state.reachable ? 'light-row--unreachable' : ''}`}
+              >
+                <span className="light-row__dot" />
+                <span className="light-row__name">{light.name}</span>
+                {!light.state.reachable && (
+                  <span className="light-row__badge">unreachable</span>
+                )}
+                <button
+                  className={`toggle toggle--light ${light.state.on ? 'toggle--on' : ''}`}
+                  onClick={() => handleLightToggle(light.id, light.state.on)}
+                  disabled={!light.state.reachable}
+                  title={light.state.on ? 'Turn off' : 'Turn on'}
+                >
+                  <span className="toggle__track">
+                    <span className="toggle__thumb" />
+                  </span>
+                </button>
+              </li>
+            ))}
+            {lightDetails.length === 0 && (
+              <li className="light-list__empty">No lights</li>
+            )}
+          </ul>
+        )}
+      </div>
 
       {zones && zones.length > 0 && (
         <div className="zone-section">

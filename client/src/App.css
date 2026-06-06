@@ -390,48 +390,93 @@ body {
   gap: 8px;
 }
 
-.scene-row {
-  display: flex;
-  flex-wrap: wrap;
+.scene-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(62px, 1fr));
   gap: 6px;
 }
 
-.scene-row--more {
+.scene-grid--more {
   padding-top: 2px;
 }
 
-.scene-pill {
-  padding: 4px 12px;
-  border-radius: 20px;
+.scene-btn {
+  aspect-ratio: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  border-radius: 10px;
   border: 1px solid var(--border);
   background: transparent;
   color: var(--text-muted);
-  font-size: 12px;
-  font-weight: 500;
   cursor: pointer;
+  padding: 6px 4px;
   transition: color 0.15s, border-color 0.15s, background 0.15s;
-  white-space: nowrap;
 }
 
-.scene-pill:hover {
+.scene-btn:hover {
   color: var(--text);
   border-color: rgba(255, 255, 255, 0.2);
+  background: var(--surface-2);
 }
 
-.scene-pill--active {
+.scene-btn--active {
   background: var(--accent-dim);
   border-color: var(--accent);
   color: var(--accent);
 }
 
-.scene-pill--more {
-  display: flex;
-  align-items: center;
-  gap: 4px;
+.scene-btn--more {
+  border-style: dashed;
 }
 
-.scene-pill--more .chevron {
-  font-size: 14px;
+.scene-btn__icon {
+  font-size: 22px;
+  line-height: 1;
+  display: block;
+}
+
+.scene-btn--more .scene-btn__icon {
+  font-size: 16px;
+  letter-spacing: 2px;
+}
+
+.scene-btn__label {
+  font-size: 10px;
+  font-weight: 500;
+  text-align: center;
+  line-height: 1.2;
+  word-break: break-word;
+  hyphens: auto;
+}
+
+/* ── Lights collapsible ── */
+
+.lights-section {
+  border-top: 1px solid var(--border);
+}
+
+.lights-section__toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 10px 16px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  transition: color 0.15s;
+}
+
+.lights-section__toggle:hover {
+  color: var(--text);
 }
 
 /* ── Nested zones ── */
