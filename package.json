@@ -7,7 +7,10 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "create-user": "ts-node bin/create-user.ts",
     "fetch-bridge-details": "ts-node bin/fetch-bridge-details.ts",
-    "mood-lights": "ts-node bin/mood-lights.ts"
+    "mood-lights": "ts-node bin/mood-lights.ts",
+    "server": "ts-node server/index.ts",
+    "client": "npm run dev --prefix client",
+    "dev": "concurrently \"npm run server\" \"npm run client\""
   },
   "keywords": [],
   "author": "",
@@ -18,12 +21,18 @@
     "trailingComma": "none"
   },
   "dependencies": {
+    "cors": "^2.8.5",
     "dotenv": "^16.4.5",
+    "express": "^4.19.2",
     "node-fetch": "^2.7.0"
   },
   "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
     "@types/node-fetch": "^2.6.11",
+    "concurrently": "^8.2.2",
     "envalid": "^8.0.0",
-    "ts-node": "^10.9.2"
+    "ts-node": "^10.9.2",
+    "typescript": "^5.4.5"
   }
 }
