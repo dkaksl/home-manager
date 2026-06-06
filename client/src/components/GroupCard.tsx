@@ -22,8 +22,13 @@ const CLASS_ICONS: Record<string, string> = {
 
 const classIcon = (cls: string) => CLASS_ICONS[cls] ?? '💡'
 
-const SCENE_PRIORITY = ['Natural light', 'Read', 'Reading', 'Rest', 'Nightlight']
-
+const SCENE_PRIORITY = [
+  'Natural light',
+  'Read',
+  'Reading',
+  'Rest',
+  'Nightlight'
+]
 
 const sortScenes = (scenes: Scene[]): Scene[] =>
   [...scenes].sort((a, b) => {
@@ -44,7 +49,14 @@ interface Props {
   onScheduleSave?: (schedule: RoomSchedule) => Promise<void>
 }
 
-export function GroupCard({ group, zones, scenes = [], schedule, onUpdate, onScheduleSave }: Props) {
+export function GroupCard({
+  group,
+  zones,
+  scenes = [],
+  schedule,
+  onUpdate,
+  onScheduleSave
+}: Props) {
   const { id, name, type, class: cls, state, lightDetails } = group
   const isOn = state.any_on
 
@@ -65,7 +77,10 @@ export function GroupCard({ group, zones, scenes = [], schedule, onUpdate, onSch
     onUpdate({
       ...group,
       state: { all_on: next, any_on: next },
-      lightDetails: lightDetails.map(l => ({ ...l, state: { ...l.state, on: next } }))
+      lightDetails: lightDetails.map((l) => ({
+        ...l,
+        state: { ...l.state, on: next }
+      }))
     })
     setActiveSceneId(null)
     await setGroupState(id, next)
@@ -75,7 +90,7 @@ export function GroupCard({ group, zones, scenes = [], schedule, onUpdate, onSch
     const next = !currentOn
     onUpdate({
       ...group,
-      lightDetails: lightDetails.map(l =>
+      lightDetails: lightDetails.map((l) =>
         l.id === lightId ? { ...l, state: { ...l.state, on: next } } : l
       )
     })
@@ -87,7 +102,10 @@ export function GroupCard({ group, zones, scenes = [], schedule, onUpdate, onSch
     onUpdate({
       ...zone,
       state: { all_on: next, any_on: next },
-      lightDetails: zone.lightDetails.map(l => ({ ...l, state: { ...l.state, on: next } }))
+      lightDetails: zone.lightDetails.map((l) => ({
+        ...l,
+        state: { ...l.state, on: next }
+      }))
     })
     await setGroupState(zone.id, next)
   }
@@ -143,7 +161,7 @@ export function GroupCard({ group, zones, scenes = [], schedule, onUpdate, onSch
       {scenes.length > 0 && (
         <div className="scene-section">
           <div className="scene-grid">
-            {visibleScenes.map(scene => (
+            {visibleScenes.map((scene) => (
               <button
                 key={scene.id}
                 className={`scene-btn ${activeSceneId === scene.id ? 'scene-btn--active' : ''}`}
@@ -156,22 +174,28 @@ export function GroupCard({ group, zones, scenes = [], schedule, onUpdate, onSch
             {moreScenes.length > 0 && (
               <button
                 className={`scene-btn scene-btn--more ${moreOpen ? 'scene-btn--more-open' : ''}`}
-                onClick={() => setMoreOpen(o => !o)}
+                onClick={() => setMoreOpen((o) => !o)}
               >
-                <span className="scene-btn__icon">{moreOpen ? '✕' : '···'}</span>
-                <span className="scene-btn__label">{moreOpen ? 'Less' : 'More'}</span>
+                <span className="scene-btn__icon">
+                  {moreOpen ? '✕' : '···'}
+                </span>
+                <span className="scene-btn__label">
+                  {moreOpen ? 'Less' : 'More'}
+                </span>
               </button>
             )}
           </div>
           {moreOpen && (
             <div className="scene-grid scene-grid--more">
-              {moreScenes.map(scene => (
+              {moreScenes.map((scene) => (
                 <button
                   key={scene.id}
                   className={`scene-btn ${activeSceneId === scene.id ? 'scene-btn--active' : ''}`}
                   onClick={() => handleSceneActivate(scene)}
                 >
-                  <span className="scene-btn__icon">{sceneIcon(scene.name)}</span>
+                  <span className="scene-btn__icon">
+                    {sceneIcon(scene.name)}
+                  </span>
                   <span className="scene-btn__label">{scene.name}</span>
                 </button>
               ))}
@@ -183,14 +207,16 @@ export function GroupCard({ group, zones, scenes = [], schedule, onUpdate, onSch
       <div className="lights-section">
         <button
           className="lights-section__toggle"
-          onClick={() => setLightsOpen(o => !o)}
+          onClick={() => setLightsOpen((o) => !o)}
         >
           <span>Lights ({lightDetails.length})</span>
-          <span className={`chevron ${lightsOpen ? 'chevron--open' : ''}`}>›</span>
+          <span className={`chevron ${lightsOpen ? 'chevron--open' : ''}`}>
+            ›
+          </span>
         </button>
         {lightsOpen && (
           <ul className="light-list">
-            {lightDetails.map(light => (
+            {lightDetails.map((light) => (
               <li
                 key={light.id}
                 className={`light-row ${light.state.on ? 'light-row--on' : ''} ${!light.state.reachable ? 'light-row--unreachable' : ''}`}
@@ -223,20 +249,22 @@ export function GroupCard({ group, zones, scenes = [], schedule, onUpdate, onSch
         <div className="zone-section">
           <button
             className="zone-section__toggle"
-            onClick={() => setZonesOpen(o => !o)}
+            onClick={() => setZonesOpen((o) => !o)}
           >
             <span>Zones ({zones.length})</span>
-            <span className={`chevron ${zonesOpen ? 'chevron--open' : ''}`}>›</span>
+            <span className={`chevron ${zonesOpen ? 'chevron--open' : ''}`}>
+              ›
+            </span>
           </button>
 
           {zonesOpen && (
             <ul className="zone-list">
-              {zones.map(zone => (
+              {zones.map((zone) => (
                 <li key={zone.id} className="nested-zone">
                   <div className="nested-zone__header">
                     <span className="nested-zone__name">{zone.name}</span>
                     <div className="nested-zone__lights">
-                      {zone.lightDetails.map(l => (
+                      {zone.lightDetails.map((l) => (
                         <span
                           key={l.id}
                           className={`nested-zone__dot ${l.state.on ? 'nested-zone__dot--on' : ''}`}
@@ -247,7 +275,9 @@ export function GroupCard({ group, zones, scenes = [], schedule, onUpdate, onSch
                     <button
                       className={`toggle toggle--light ${zone.state.any_on ? 'toggle--on' : ''}`}
                       onClick={() => handleZoneToggle(zone)}
-                      title={zone.state.any_on ? 'Turn off zone' : 'Turn on zone'}
+                      title={
+                        zone.state.any_on ? 'Turn off zone' : 'Turn on zone'
+                      }
                     >
                       <span className="toggle__track">
                         <span className="toggle__thumb" />

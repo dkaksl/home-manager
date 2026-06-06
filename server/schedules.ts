@@ -1,14 +1,19 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs'
 import path from 'path'
-import { getEnrichedGroups, setGroupAction, activateScene, activateSmartScene } from './hue'
+import {
+  getEnrichedGroups,
+  setGroupAction,
+  activateScene,
+  activateSmartScene
+} from './hue'
 
 const SCHEDULES_FILE = path.join(process.cwd(), 'data', 'schedules.json')
 
 export interface TimeSlot {
   id: string
-  startTime: string  // "HH:MM"
-  endTime: string    // "HH:MM" exclusive
-  sceneId: string    // scene id, or 'off'
+  startTime: string // "HH:MM"
+  endTime: string // "HH:MM" exclusive
+  sceneId: string // scene id, or 'off'
   sceneType: 'static' | 'smart' | 'off'
 }
 
@@ -54,7 +59,9 @@ const inSlot = (nowMin: number, slot: TimeSlot): boolean => {
 
 const tick = async () => {
   const data = load()
-  const enabled = Object.values(data).filter(s => s.enabled && s.slots.length > 0)
+  const enabled = Object.values(data).filter(
+    (s) => s.enabled && s.slots.length > 0
+  )
   if (!enabled.length) return
 
   const now = new Date()
@@ -64,7 +71,7 @@ const tick = async () => {
   let groups: Awaited<ReturnType<typeof getEnrichedGroups>> | null = null
 
   for (const schedule of enabled) {
-    const slot = schedule.slots.find(s => inSlot(nowMin, s))
+    const slot = schedule.slots.find((s) => inSlot(nowMin, s))
     if (!slot) continue
 
     try {
@@ -72,7 +79,7 @@ const tick = async () => {
         await setGroupAction(schedule.groupId, { on: false })
       } else {
         if (!groups) groups = await getEnrichedGroups()
-        const group = groups.find(g => g.id === schedule.groupId)
+        const group = groups.find((g) => g.id === schedule.groupId)
         if (!group?.state.any_on) continue
 
         if (slot.sceneType === 'smart') {
@@ -97,5 +104,7 @@ export const startScheduler = () => {
     setInterval(tick, 60_000)
   }, msToNextMinute)
 
-  console.log(`[scheduler] starting, first tick in ${Math.round(msToNextMinute / 1000)}s`)
+  console.log(
+    `[scheduler] starting, first tick in ${Math.round(msToNextMinute / 1000)}s`
+  )
 }

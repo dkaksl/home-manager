@@ -1,0 +1,28 @@
+{
+  "1": {
+    "groupId": "1",
+    "enabled": true,
+    "slots": [
+      {
+        "id": "6cd6214a-1094-43ea-a7be-d0e02f435ae2",
+        "startTime": "20:00",
+        "endTime": "23:55",
+        "sceneId": "53xKkY-qcq439hr",
+        "sceneType": "static"
+      }
+    ]
+  },
+  "7": {
+    "groupId": "7",
+    "enabled": true,
+    "slots": [
+      {
+        "id": "b00b1aa3-100c-44ab-bb75-8b7385982d37",
+        "startTime": "20:00",
+        "endTime": "23:55",
+        "sceneId": "680jdo9HMvDrvC8",
+        "sceneType": "static"
+      }
+    ]
+  }
+}

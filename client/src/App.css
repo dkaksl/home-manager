@@ -1,4 +1,6 @@
-*, *::before, *::after {
+*,
+*::before,
+*::after {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
@@ -86,7 +88,9 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: color 0.15s, border-color 0.15s;
+  transition:
+    color 0.15s,
+    border-color 0.15s;
 }
 
 .refresh-btn:hover {
@@ -245,7 +249,9 @@ body {
   border-radius: 50%;
   flex-shrink: 0;
   background: var(--off-dot);
-  transition: background 0.2s, box-shadow 0.2s;
+  transition:
+    background 0.2s,
+    box-shadow 0.2s;
 }
 
 .light-row--on .light-row__dot {
@@ -299,7 +305,9 @@ body {
   background: var(--surface-2);
   border: 1px solid var(--border);
   position: relative;
-  transition: background 0.2s, border-color 0.2s;
+  transition:
+    background 0.2s,
+    border-color 0.2s;
 }
 
 .toggle--on .toggle__track {
@@ -316,7 +324,9 @@ body {
   position: absolute;
   top: 2px;
   left: 2px;
-  transition: transform 0.2s, background 0.2s;
+  transition:
+    transform 0.2s,
+    background 0.2s;
 }
 
 .toggle--on .toggle__thumb {
@@ -361,7 +371,9 @@ body {
 }
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .error-banner {
@@ -413,7 +425,10 @@ body {
   color: var(--text-muted);
   cursor: pointer;
   padding: 6px 4px;
-  transition: color 0.15s, border-color 0.15s, background 0.15s;
+  transition:
+    color 0.15s,
+    border-color 0.15s,
+    background 0.15s;
 }
 
 .scene-btn:hover {
@@ -495,17 +510,22 @@ body {
   padding: 4px;
   border-radius: 6px;
   line-height: 1;
-  opacity: 0.4;
-  transition: opacity 0.15s;
+  filter: grayscale(1);
+  transition: filter 0.15s, box-shadow 0.15s;
 }
 
 .schedule-btn:hover {
-  opacity: 0.8;
+  filter: none;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.18);
 }
 
 .schedule-btn--active {
-  opacity: 1;
-  filter: drop-shadow(0 0 4px var(--accent-glow));
+  filter: drop-shadow(0 0 5px var(--accent-glow));
+}
+
+.schedule-btn--active:hover {
+  filter: drop-shadow(0 0 5px var(--accent-glow));
+  box-shadow: 0 0 0 2px rgba(245, 166, 35, 0.45);
 }
 
 /* ── Schedule modal ── */
@@ -635,7 +655,10 @@ body {
   font-size: 11px;
   cursor: pointer;
   text-align: center;
-  transition: color 0.15s, border-color 0.15s, background 0.15s;
+  transition:
+    color 0.15s,
+    border-color 0.15s,
+    background 0.15s;
 }
 
 .slot-add-gap:hover {
@@ -698,7 +721,9 @@ body {
   padding: 6px 14px;
   border-radius: var(--radius-sm);
   cursor: pointer;
-  transition: color 0.15s, border-color 0.15s;
+  transition:
+    color 0.15s,
+    border-color 0.15s;
 }
 
 .add-slot-btn:hover {
@@ -875,7 +900,9 @@ body {
   height: 7px;
   border-radius: 50%;
   background: var(--off-dot);
-  transition: background 0.2s, box-shadow 0.2s;
+  transition:
+    background 0.2s,
+    box-shadow 0.2s;
 }
 
 .nested-zone__dot--on {
