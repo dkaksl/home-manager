@@ -1,6 +1,7 @@
 import { useState } from 'react'
-import type { Group, Scene } from '../types'
+import type { Group, Scene, RoomSchedule } from '../types'
 import { setLightState, setGroupState, activateScene } from '../api'
+import { ScheduleModal } from './ScheduleModal'
 
 const CLASS_ICONS: Record<string, string> = {
   'Living room': '🛋',
@@ -54,10 +55,12 @@ interface Props {
   group: Group
   zones?: Group[]
   scenes?: Scene[]
+  schedule?: RoomSchedule
   onUpdate: (updated: Group) => void
+  onScheduleSave?: (schedule: RoomSchedule) => Promise<void>
 }
 
-export function GroupCard({ group, zones, scenes = [], onUpdate }: Props) {
+export function GroupCard({ group, zones, scenes = [], schedule, onUpdate, onScheduleSave }: Props) {
   const { id, name, type, class: cls, state, lightDetails } = group
   const isOn = state.any_on
 
@@ -65,6 +68,9 @@ export function GroupCard({ group, zones, scenes = [], onUpdate }: Props) {
   const [zonesOpen, setZonesOpen] = useState(false)
   const [moreOpen, setMoreOpen] = useState(false)
   const [activeSceneId, setActiveSceneId] = useState<string | null>(null)
+  const [scheduleOpen, setScheduleOpen] = useState(false)
+
+  const scheduleActive = schedule?.enabled ?? false
 
   const sorted = sortScenes(scenes)
   const visibleScenes = sorted.slice(0, 3)
@@ -118,16 +124,37 @@ export function GroupCard({ group, zones, scenes = [], onUpdate }: Props) {
             <span className="group-card__type">{type}</span>
           </div>
         </div>
-        <button
-          className={`toggle toggle--group ${isOn ? 'toggle--on' : ''}`}
-          onClick={handleGroupToggle}
-          title={isOn ? 'Turn off all' : 'Turn on all'}
-        >
-          <span className="toggle__track">
-            <span className="toggle__thumb" />
-          </span>
-        </button>
+        <div className="group-card__actions">
+          {type === 'Room' && (
+            <button
+              className={`schedule-btn ${scheduleActive ? 'schedule-btn--active' : ''}`}
+              onClick={() => setScheduleOpen(true)}
+              title="Schedule"
+            >
+              ⏰
+            </button>
+          )}
+          <button
+            className={`toggle toggle--group ${isOn ? 'toggle--on' : ''}`}
+            onClick={handleGroupToggle}
+            title={isOn ? 'Turn off all' : 'Turn on all'}
+          >
+            <span className="toggle__track">
+              <span className="toggle__thumb" />
+            </span>
+          </button>
+        </div>
       </div>
+
+      {scheduleOpen && onScheduleSave && (
+        <ScheduleModal
+          group={group}
+          scenes={scenes}
+          initialSchedule={schedule}
+          onClose={() => setScheduleOpen(false)}
+          onSave={onScheduleSave}
+        />
+      )}
 
       {scenes.length > 0 && (
         <div className="scene-section">

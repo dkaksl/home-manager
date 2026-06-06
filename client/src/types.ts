@@ -25,6 +25,20 @@ export interface Scene {
   type: 'static' | 'smart'
 }
 
+export interface TimeSlot {
+  id: string
+  startTime: string
+  endTime: string
+  sceneId: string
+  sceneType: 'static' | 'smart' | 'off'
+}
+
+export interface RoomSchedule {
+  groupId: string
+  enabled: boolean
+  slots: TimeSlot[]
+}
+
 export interface GroupState {
   all_on: boolean
   any_on: boolean

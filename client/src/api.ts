@@ -1,4 +1,4 @@
-import type { Group, LightState, Scene } from './types'
+import type { Group, LightState, Scene, RoomSchedule } from './types'
 
 export type ApiErrorCode = 'not_configured' | 'unauthorized' | 'unknown'
 
@@ -48,4 +48,20 @@ export const activateScene = (
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ sceneId, type })
+  }).then((r) => r.json())
+
+export const fetchSchedules = (): Promise<Record<string, RoomSchedule>> =>
+  fetch('/api/schedules').then((r) => {
+    if (!r.ok) throw new Error(`HTTP ${r.status}`)
+    return r.json()
+  })
+
+export const saveSchedule = (
+  groupId: string,
+  schedule: RoomSchedule
+): Promise<unknown> =>
+  fetch(`/api/schedules/${groupId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(schedule)
   }).then((r) => r.json())

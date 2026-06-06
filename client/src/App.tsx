@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
-import type { Group, Scene } from './types'
-import { fetchGroups, fetchScenes, ApiError, type ApiErrorCode } from './api'
+import type { Group, Scene, RoomSchedule } from './types'
+import { fetchGroups, fetchScenes, fetchSchedules, saveSchedule, ApiError, type ApiErrorCode } from './api'
 import { GroupCard } from './components/GroupCard'
 import { SetupScreen } from './components/SetupScreen'
 import './App.css'
@@ -37,6 +37,7 @@ function linkZonesToRooms(groups: Group[]): {
 export default function App() {
   const [groups, setGroups] = useState<Group[]>([])
   const [scenesMap, setScenesMap] = useState<Record<string, Scene[]>>({})
+  const [schedulesMap, setSchedulesMap] = useState<Record<string, RoomSchedule>>({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [setupError, setSetupError] = useState<ApiErrorCode | null>(null)
@@ -73,8 +74,17 @@ export default function App() {
         map[scene.group].push(scene)
       }
       setScenesMap(map)
-    }).catch(() => {/* scenes are optional */})
+    }).catch(() => {})
   }, [])
+
+  useEffect(() => {
+    fetchSchedules().then(setSchedulesMap).catch(() => {})
+  }, [])
+
+  const handleScheduleSave = async (groupId: string, schedule: RoomSchedule) => {
+    await saveSchedule(groupId, schedule)
+    setSchedulesMap(prev => ({ ...prev, [groupId]: schedule }))
+  }
 
   const updateGroup = (updated: Group) => {
     setGroups(prev => prev.map(g => (g.id === updated.id ? updated : g)))
@@ -125,7 +135,9 @@ export default function App() {
                     group={room}
                     zones={linkedZones[room.id]}
                     scenes={scenesMap[room.id] ?? []}
+                    schedule={schedulesMap[room.id]}
                     onUpdate={updateGroup}
+                    onScheduleSave={s => handleScheduleSave(room.id, s)}
                   />
                 ))}
               </div>

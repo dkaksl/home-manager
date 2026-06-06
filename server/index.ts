@@ -11,6 +11,7 @@ import {
   activateScene,
   activateSmartScene
 } from './hue'
+import { getSchedules, setSchedule, startScheduler } from './schedules'
 
 config()
 
@@ -85,6 +86,24 @@ app.put('/api/groups/:id/scene', async (req, res) => {
   }
 })
 
+app.get('/api/schedules', (_req, res) => {
+  try {
+    res.json(getSchedules())
+  } catch (err) {
+    hueError(err, res)
+  }
+})
+
+app.put('/api/schedules/:groupId', (req, res) => {
+  try {
+    setSchedule(req.params.groupId, req.body)
+    res.json({ ok: true })
+  } catch (err) {
+    hueError(err, res)
+  }
+})
+
 app.listen(PORT, () => {
   console.log(`Hue manager server running on http://localhost:${PORT}`)
+  startScheduler()
 })
