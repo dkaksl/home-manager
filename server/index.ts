@@ -5,7 +5,11 @@ import {
   getEnrichedGroups,
   getLights,
   setLightState,
-  setGroupAction
+  setGroupAction,
+  getScenes,
+  getSmartScenes,
+  activateScene,
+  activateSmartScene
 } from './hue'
 
 config()
@@ -53,6 +57,29 @@ app.put('/api/groups/:id/state', async (req, res) => {
   } catch (err) {
     console.error(err)
     res.status(500).json({ error: 'Failed to set group state' })
+  }
+})
+
+app.get('/api/scenes', async (_req, res) => {
+  try {
+    const [scenes, smartScenes] = await Promise.all([getScenes(), getSmartScenes()])
+    res.json([...scenes, ...smartScenes])
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: 'Failed to fetch scenes' })
+  }
+})
+
+app.put('/api/groups/:id/scene', async (req, res) => {
+  try {
+    const { sceneId, type } = req.body as { sceneId: string; type: 'static' | 'smart' }
+    const result = type === 'smart'
+      ? await activateSmartScene(sceneId)
+      : await activateScene(req.params.id, sceneId)
+    res.json(result)
+  } catch (err) {
+    console.error(err)
+    res.status(500).json({ error: 'Failed to activate scene' })
   }
 })
 

@@ -1,3 +1,4 @@
+import https from 'https'
 import fetch from 'node-fetch'
 import { config } from 'dotenv'
 import { getUser } from '../src/user'
@@ -48,6 +49,11 @@ export interface EnrichedGroup extends Group {
 
 const apiBase = () => `http://${HUE_IP}/api/${getUser()}`
 
+// v2 API (HTTPS, self-signed cert on bridge)
+const v2Base = () => `https://${HUE_IP}/clip/v2/resource`
+const v2Headers = () => ({ 'hue-application-key': getUser() })
+const v2Agent = new https.Agent({ rejectUnauthorized: false })
+
 export const getLights = async (): Promise<Record<string, Light>> => {
   const res = await fetch(`${apiBase()}/lights`)
   const json = (await res.json()) as Record<string, Omit<Light, 'id'>>
@@ -84,6 +90,13 @@ export const setLightState = async (
   return res.json()
 }
 
+export interface Scene {
+  id: string
+  name: string
+  group: string
+  type: 'static' | 'smart'
+}
+
 export const setGroupAction = async (
   groupId: string,
   action: { on?: boolean; bri?: number }
@@ -92,6 +105,71 @@ export const setGroupAction = async (
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(action)
+  })
+  return res.json()
+}
+
+export const getScenes = async (): Promise<Scene[]> => {
+  const res = await fetch(`${apiBase()}/scenes`)
+  const json = (await res.json()) as Record<
+    string,
+    { name: string; group?: string; type: string }
+  >
+  return Object.entries(json)
+    .filter(([, v]) => v.type === 'GroupScene' && v.group)
+    .map(([id, v]): Scene => ({ id, name: v.name, group: v.group!, type: 'static' }))
+}
+
+// Returns a map of v2 room UUID → v1 group ID, matched by room name
+const getV2ToV1GroupMap = async (): Promise<Record<string, string>> => {
+  const [v2Res, v1Groups] = await Promise.all([
+    fetch(`${v2Base()}/room`, { headers: v2Headers(), agent: v2Agent } as Parameters<typeof fetch>[1]),
+    getGroups()
+  ])
+  const v2Data = (await v2Res.json()) as {
+    data: Array<{ id: string; metadata: { name: string } }>
+  }
+  const nameToV1Id = Object.fromEntries(
+    Object.entries(v1Groups).map(([id, g]) => [g.name, id])
+  )
+  return Object.fromEntries(
+    v2Data.data.map(r => [r.id, nameToV1Id[r.metadata.name] ?? ''])
+  )
+}
+
+export const getSmartScenes = async (): Promise<Scene[]> => {
+  const [res, v2ToV1] = await Promise.all([
+    fetch(`${v2Base()}/smart_scene`, { headers: v2Headers(), agent: v2Agent } as Parameters<typeof fetch>[1]),
+    getV2ToV1GroupMap()
+  ])
+  const json = (await res.json()) as {
+    data: Array<{ id: string; metadata: { name: string }; group: { rid: string } }>
+  }
+  return json.data
+    .filter(ss => v2ToV1[ss.group.rid])
+    .map(ss => ({
+      id: ss.id,
+      name: ss.metadata.name,
+      group: v2ToV1[ss.group.rid],
+      type: 'smart' as const
+    }))
+}
+
+export const activateSmartScene = async (smartSceneId: string) => {
+  const res = await fetch(`${v2Base()}/smart_scene/${smartSceneId}`, {
+    method: 'PUT',
+    headers: { ...v2Headers(), 'Content-Type': 'application/json' },
+    agent: v2Agent,
+    body: JSON.stringify({ recall: { action: 'activate' } })
+  } as Parameters<typeof fetch>[1])
+  return res.json()
+}
+
+export const activateScene = async (groupId: string, sceneId: string) => {
+  const res = await fetch(`${apiBase()}/groups/${groupId}/action`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ scene: sceneId })
   })
   return res.json()
 }

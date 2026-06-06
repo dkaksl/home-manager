@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import type { Group } from '../types'
-import { setLightState, setGroupState } from '../api'
+import type { Group, Scene } from '../types'
+import { setLightState, setGroupState, activateScene } from '../api'
 
 const CLASS_ICONS: Record<string, string> = {
   'Living room': '🛋',
@@ -20,16 +20,26 @@ const CLASS_ICONS: Record<string, string> = {
 
 const classIcon = (cls: string) => CLASS_ICONS[cls] ?? '💡'
 
+// Scenes surfaced at top level; everything else collapses under "More"
+const PINNED = new Set(['Natural light', 'Rest', 'Nightlight'])
+
 interface Props {
   group: Group
   zones?: Group[]
+  scenes?: Scene[]
   onUpdate: (updated: Group) => void
 }
 
-export function GroupCard({ group, zones, onUpdate }: Props) {
+export function GroupCard({ group, zones, scenes = [], onUpdate }: Props) {
   const { id, name, type, class: cls, state, lightDetails } = group
   const isOn = state.any_on
+
   const [zonesOpen, setZonesOpen] = useState(false)
+  const [moreOpen, setMoreOpen] = useState(false)
+  const [activeSceneId, setActiveSceneId] = useState<string | null>(null)
+
+  const pinnedScenes = scenes.filter(s => PINNED.has(s.name))
+  const moreScenes = scenes.filter(s => !PINNED.has(s.name))
 
   const handleGroupToggle = async () => {
     const next = !isOn
@@ -38,6 +48,7 @@ export function GroupCard({ group, zones, onUpdate }: Props) {
       state: { all_on: next, any_on: next },
       lightDetails: lightDetails.map(l => ({ ...l, state: { ...l.state, on: next } }))
     })
+    setActiveSceneId(null)
     await setGroupState(id, next)
   }
 
@@ -60,6 +71,12 @@ export function GroupCard({ group, zones, onUpdate }: Props) {
       lightDetails: zone.lightDetails.map(l => ({ ...l, state: { ...l.state, on: next } }))
     })
     await setGroupState(zone.id, next)
+  }
+
+  const handleSceneActivate = async (scene: Scene) => {
+    setActiveSceneId(scene.id)
+    onUpdate({ ...group, state: { all_on: true, any_on: true }, lightDetails })
+    await activateScene(id, scene.id, scene.type)
   }
 
   return (
@@ -110,6 +127,44 @@ export function GroupCard({ group, zones, onUpdate }: Props) {
           <li className="light-list__empty">No lights</li>
         )}
       </ul>
+
+      {scenes.length > 0 && (
+        <div className="scene-section">
+          <div className="scene-row">
+            {pinnedScenes.map(scene => (
+              <button
+                key={scene.id}
+                className={`scene-pill ${activeSceneId === scene.id ? 'scene-pill--active' : ''}`}
+                onClick={() => handleSceneActivate(scene)}
+              >
+                {scene.name}
+              </button>
+            ))}
+            {moreScenes.length > 0 && (
+              <button
+                className={`scene-pill scene-pill--more ${moreOpen ? 'scene-pill--more-open' : ''}`}
+                onClick={() => setMoreOpen(o => !o)}
+              >
+                More
+                <span className={`chevron ${moreOpen ? 'chevron--open' : ''}`}>›</span>
+              </button>
+            )}
+          </div>
+          {moreOpen && (
+            <div className="scene-row scene-row--more">
+              {moreScenes.map(scene => (
+                <button
+                  key={scene.id}
+                  className={`scene-pill ${activeSceneId === scene.id ? 'scene-pill--active' : ''}`}
+                  onClick={() => handleSceneActivate(scene)}
+                >
+                  {scene.name}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {zones && zones.length > 0 && (
         <div className="zone-section">

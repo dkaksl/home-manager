@@ -1,4 +1,4 @@
-import type { Group, LightState } from './types'
+import type { Group, LightState, Scene } from './types'
 
 export const fetchGroups = (): Promise<Group[]> =>
   fetch('/api/groups').then(r => {
@@ -24,4 +24,21 @@ export const setGroupState = (
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ on })
+  }).then(r => r.json())
+
+export const fetchScenes = (): Promise<Scene[]> =>
+  fetch('/api/scenes').then(r => {
+    if (!r.ok) throw new Error(`HTTP ${r.status}`)
+    return r.json()
+  })
+
+export const activateScene = (
+  groupId: string,
+  sceneId: string,
+  type: 'static' | 'smart'
+): Promise<unknown> =>
+  fetch(`/api/groups/${groupId}/scene`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sceneId, type })
   }).then(r => r.json())

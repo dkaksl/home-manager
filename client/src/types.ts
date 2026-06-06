@@ -18,6 +18,13 @@ export interface Light {
   modelid: string
 }
 
+export interface Scene {
+  id: string
+  name: string
+  group: string
+  type: 'static' | 'smart'
+}
+
 export interface GroupState {
   all_on: boolean
   any_on: boolean

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
-import type { Group } from './types'
-import { fetchGroups } from './api'
+import type { Group, Scene } from './types'
+import { fetchGroups, fetchScenes } from './api'
 import { GroupCard } from './components/GroupCard'
 import './App.css'
 
@@ -35,6 +35,7 @@ function linkZonesToRooms(groups: Group[]): {
 
 export default function App() {
   const [groups, setGroups] = useState<Group[]>([])
+  const [scenesMap, setScenesMap] = useState<Record<string, Scene[]>>({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null)
@@ -56,6 +57,17 @@ export default function App() {
     const interval = setInterval(loadGroups, 10_000)
     return () => clearInterval(interval)
   }, [loadGroups])
+
+  useEffect(() => {
+    fetchScenes().then(scenes => {
+      const map: Record<string, Scene[]> = {}
+      for (const scene of scenes) {
+        if (!map[scene.group]) map[scene.group] = []
+        map[scene.group].push(scene)
+      }
+      setScenesMap(map)
+    }).catch(() => {/* scenes are optional */})
+  }, [])
 
   const updateGroup = (updated: Group) => {
     setGroups(prev => prev.map(g => (g.id === updated.id ? updated : g)))
@@ -103,6 +115,7 @@ export default function App() {
                     key={room.id}
                     group={room}
                     zones={linkedZones[room.id]}
+                    scenes={scenesMap[room.id] ?? []}
                     onUpdate={updateGroup}
                   />
                 ))}
