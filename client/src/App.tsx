@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import type { Group, Scene } from './types'
-import { fetchGroups, fetchScenes } from './api'
+import { fetchGroups, fetchScenes, ApiError, type ApiErrorCode } from './api'
 import { GroupCard } from './components/GroupCard'
+import { SetupScreen } from './components/SetupScreen'
 import './App.css'
 
 function linkZonesToRooms(groups: Group[]): {
@@ -38,6 +39,7 @@ export default function App() {
   const [scenesMap, setScenesMap] = useState<Record<string, Scene[]>>({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [setupError, setSetupError] = useState<ApiErrorCode | null>(null)
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null)
   const [orphansOpen, setOrphansOpen] = useState(false)
 
@@ -47,8 +49,13 @@ export default function App() {
       setGroups(data)
       setLastRefresh(new Date())
       setError(null)
-    } catch {
-      setError('Could not reach the server. Is it running?')
+      setSetupError(null)
+    } catch (err) {
+      if (err instanceof ApiError && (err.code === 'not_configured' || err.code === 'unauthorized')) {
+        setSetupError(err.code)
+      } else {
+        setError('Could not reach the server. Is it running?')
+      }
     }
   }, [])
 
@@ -97,7 +104,9 @@ export default function App() {
       <div className="app-body">
         {error && <div className="error-banner">{error}</div>}
 
-        {loading ? (
+        {setupError ? (
+          <SetupScreen reason={setupError} />
+        ) : loading ? (
           <div className="loading">
             <div className="loading__spinner" />
             <span>Connecting to bridge…</span>

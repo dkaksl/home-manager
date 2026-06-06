@@ -1,11 +1,11 @@
 import https from 'https'
 import fetch from 'node-fetch'
 import { config } from 'dotenv'
-import { getUser } from '../src/user'
 
 config()
 
 const HUE_IP = process.env.HUE_IP || '192.168.1.182'
+const HUE_USER = process.env.HUE_USER?.trim() ?? ''
 
 export interface LightState {
   on: boolean
@@ -47,6 +47,11 @@ export interface EnrichedGroup extends Group {
   lightDetails: Light[]
 }
 
+const getUser = (): string => {
+  if (!HUE_USER) throw new Error('HUE_USER_NOT_CONFIGURED')
+  return HUE_USER
+}
+
 const apiBase = () => `http://${HUE_IP}/api/${getUser()}`
 
 // v2 API (HTTPS, self-signed cert on bridge)
@@ -54,19 +59,28 @@ const v2Base = () => `https://${HUE_IP}/clip/v2/resource`
 const v2Headers = () => ({ 'hue-application-key': getUser() })
 const v2Agent = new https.Agent({ rejectUnauthorized: false })
 
+// The v1 bridge returns [{error:{type:1,...}}] for an invalid user token
+const assertAuthOk = (json: unknown) => {
+  if (Array.isArray(json) && json[0]?.error?.type === 1) {
+    throw new Error('HUE_UNAUTHORIZED')
+  }
+}
+
 export const getLights = async (): Promise<Record<string, Light>> => {
   const res = await fetch(`${apiBase()}/lights`)
-  const json = (await res.json()) as Record<string, Omit<Light, 'id'>>
+  const json = await res.json()
+  assertAuthOk(json)
   return Object.fromEntries(
-    Object.entries(json).map(([id, light]) => [id, { ...light, id }])
+    Object.entries(json as Record<string, Omit<Light, 'id'>>).map(([id, light]) => [id, { ...light, id }])
   )
 }
 
 export const getGroups = async (): Promise<Record<string, Group>> => {
   const res = await fetch(`${apiBase()}/groups`)
-  const json = (await res.json()) as Record<string, Omit<Group, 'id'>>
+  const json = await res.json()
+  assertAuthOk(json)
   return Object.fromEntries(
-    Object.entries(json).map(([id, group]) => [id, { ...group, id }])
+    Object.entries(json as Record<string, Omit<Group, 'id'>>).map(([id, group]) => [id, { ...group, id }])
   )
 }
 
