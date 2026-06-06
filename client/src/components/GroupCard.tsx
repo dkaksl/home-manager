@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { Group, Scene, RoomSchedule } from '../types'
 import { setLightState, setGroupState, activateScene } from '../api'
+import { sceneIcon } from '../sceneIcons'
 import { ScheduleModal } from './ScheduleModal'
 
 const CLASS_ICONS: Record<string, string> = {
@@ -23,23 +24,6 @@ const classIcon = (cls: string) => CLASS_ICONS[cls] ?? '💡'
 
 const SCENE_PRIORITY = ['Natural light', 'Read', 'Reading', 'Rest', 'Nightlight']
 
-const SCENE_ICONS: Record<string, string> = {
-  'Natural light': '☀️',
-  'Read': '📖',
-  'Reading': '📖',
-  'Rest': '😌',
-  'Nightlight': '🌙',
-  'Concentrate': '🎯',
-  'Energize': '⚡',
-  'Bright': '💡',
-  'Dimmed': '🕯',
-  'Relax': '🛋',
-  'TV time': '📺',
-  'Savanna sunset': '🌅',
-  'Tropical twilight': '🌺',
-}
-
-const sceneIcon = (name: string) => SCENE_ICONS[name] ?? '✨'
 
 const sortScenes = (scenes: Scene[]): Scene[] =>
   [...scenes].sort((a, b) => {

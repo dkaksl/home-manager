@@ -592,19 +592,56 @@ body {
   padding: 8px 10px;
 }
 
-.slot-time {
+.time-select {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 6px;
-  color: var(--text);
-  font-size: 13px;
-  padding: 5px 6px;
-  width: 90px;
+  padding: 2px 4px;
+  flex-shrink: 0;
 }
 
-.slot-time::-webkit-calendar-picker-indicator {
-  filter: invert(0.5);
+.time-select__part {
+  background: transparent;
+  border: none;
+  color: var(--text);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  padding: 3px 1px;
   cursor: pointer;
+  outline: none;
+  width: 36px;
+  text-align: center;
+}
+
+.time-select__sep {
+  color: var(--text-muted);
+  font-size: 14px;
+  font-weight: 600;
+  user-select: none;
+  padding: 0 1px;
+}
+
+.slot-add-gap {
+  display: block;
+  width: 100%;
+  padding: 5px 10px;
+  background: transparent;
+  border: 1px dashed rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  color: var(--text-muted);
+  font-size: 11px;
+  cursor: pointer;
+  text-align: center;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+
+.slot-add-gap:hover {
+  color: var(--accent);
+  border-color: rgba(245, 166, 35, 0.35);
+  background: rgba(245, 166, 35, 0.04);
 }
 
 .slot-arrow {
