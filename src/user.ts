@@ -13,7 +13,7 @@ const { HUE_IP } = cleanEnv(process.env, {
 export const createUser = async () => {
   const response = await fetch(`http://${HUE_IP}/api`, {
     method: 'POST',
-    body: JSON.stringify({ devicetype: 'my_hue_app#wsl kpc' })
+    body: JSON.stringify({ devicetype: 'my_hue_app#ubuntu_kpc' })
   })
   const json = await response.json()
   console.log(json)
