@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import type { Group } from '../types'
 import { setLightState, setGroupState } from '../api'
 
@@ -21,22 +22,21 @@ const classIcon = (cls: string) => CLASS_ICONS[cls] ?? '💡'
 
 interface Props {
   group: Group
+  zones?: Group[]
   onUpdate: (updated: Group) => void
 }
 
-export function GroupCard({ group, onUpdate }: Props) {
+export function GroupCard({ group, zones, onUpdate }: Props) {
   const { id, name, type, class: cls, state, lightDetails } = group
   const isOn = state.any_on
+  const [zonesOpen, setZonesOpen] = useState(false)
 
   const handleGroupToggle = async () => {
     const next = !isOn
     onUpdate({
       ...group,
       state: { all_on: next, any_on: next },
-      lightDetails: lightDetails.map(l => ({
-        ...l,
-        state: { ...l.state, on: next }
-      }))
+      lightDetails: lightDetails.map(l => ({ ...l, state: { ...l.state, on: next } }))
     })
     await setGroupState(id, next)
   }
@@ -50,6 +50,16 @@ export function GroupCard({ group, onUpdate }: Props) {
       )
     })
     await setLightState(lightId, { on: next })
+  }
+
+  const handleZoneToggle = async (zone: Group) => {
+    const next = !zone.state.any_on
+    onUpdate({
+      ...zone,
+      state: { all_on: next, any_on: next },
+      lightDetails: zone.lightDetails.map(l => ({ ...l, state: { ...l.state, on: next } }))
+    })
+    await setGroupState(zone.id, next)
   }
 
   return (
@@ -100,6 +110,48 @@ export function GroupCard({ group, onUpdate }: Props) {
           <li className="light-list__empty">No lights</li>
         )}
       </ul>
+
+      {zones && zones.length > 0 && (
+        <div className="zone-section">
+          <button
+            className="zone-section__toggle"
+            onClick={() => setZonesOpen(o => !o)}
+          >
+            <span>Zones ({zones.length})</span>
+            <span className={`chevron ${zonesOpen ? 'chevron--open' : ''}`}>›</span>
+          </button>
+
+          {zonesOpen && (
+            <ul className="zone-list">
+              {zones.map(zone => (
+                <li key={zone.id} className="nested-zone">
+                  <div className="nested-zone__header">
+                    <span className="nested-zone__name">{zone.name}</span>
+                    <div className="nested-zone__lights">
+                      {zone.lightDetails.map(l => (
+                        <span
+                          key={l.id}
+                          className={`nested-zone__dot ${l.state.on ? 'nested-zone__dot--on' : ''}`}
+                          title={l.name}
+                        />
+                      ))}
+                    </div>
+                    <button
+                      className={`toggle toggle--light ${zone.state.any_on ? 'toggle--on' : ''}`}
+                      onClick={() => handleZoneToggle(zone)}
+                      title={zone.state.any_on ? 'Turn off zone' : 'Turn on zone'}
+                    >
+                      <span className="toggle__track">
+                        <span className="toggle__thumb" />
+                      </span>
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
     </div>
   )
 }

@@ -102,49 +102,62 @@ body {
   width: 100%;
 }
 
-/* ── Filter tabs ── */
+/* ── Sections ── */
 
-.filter-tabs {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 24px;
+.section {
+  margin-bottom: 36px;
 }
 
-.filter-tab {
+.section__heading {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 14px;
-  border-radius: 20px;
-  border: 1px solid var(--border);
-  background: transparent;
-  color: var(--text-muted);
+  gap: 8px;
   font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.15s;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--text-muted);
+  margin-bottom: 16px;
 }
 
-.filter-tab:hover {
-  color: var(--text);
-  border-color: rgba(255, 255, 255, 0.15);
-}
-
-.filter-tab--active {
-  background: var(--accent-dim);
-  border-color: var(--accent);
-  color: var(--accent);
-}
-
-.filter-tab__count {
-  background: rgba(255, 255, 255, 0.08);
+.section__count {
+  background: var(--surface-2);
   border-radius: 10px;
-  padding: 1px 7px;
+  padding: 1px 8px;
   font-size: 11px;
+  font-weight: 500;
 }
 
-.filter-tab--active .filter-tab__count {
-  background: var(--accent-dim);
+/* collapsible section header (orphan zones) */
+.section__collapse-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  margin-bottom: 16px;
+}
+
+.section__collapse-btn .section__heading {
+  margin-bottom: 0;
+}
+
+/* ── Chevron ── */
+
+.chevron {
+  color: var(--text-muted);
+  font-size: 20px;
+  line-height: 1;
+  display: inline-block;
+  transform: rotate(0deg);
+  transition: transform 0.2s;
+}
+
+.chevron--open {
+  transform: rotate(90deg);
 }
 
 /* ── Group grid ── */
@@ -365,4 +378,74 @@ body {
   color: var(--text-muted);
   font-size: 14px;
   padding: 40px 0;
+}
+
+/* ── Nested zones ── */
+
+.zone-section {
+  border-top: 1px solid var(--border);
+}
+
+.zone-section__toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 10px 16px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  transition: color 0.15s;
+}
+
+.zone-section__toggle:hover {
+  color: var(--text);
+}
+
+.zone-list {
+  list-style: none;
+  padding: 0 0 8px;
+}
+
+.nested-zone {
+  padding: 0 16px;
+}
+
+.nested-zone__header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  border-top: 1px solid var(--border);
+}
+
+.nested-zone__name {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.nested-zone__lights {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.nested-zone__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--off-dot);
+  transition: background 0.2s, box-shadow 0.2s;
+}
+
+.nested-zone__dot--on {
+  background: var(--on-dot);
+  box-shadow: 0 0 5px var(--accent-glow);
 }
