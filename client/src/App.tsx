@@ -4,7 +4,16 @@ import { fetchGroups, fetchScenes, fetchSchedules, saveSchedule, ApiError, type 
 import { GroupCard } from './components/GroupCard'
 import { SetupScreen } from './components/SetupScreen'
 import { ConnectScreen } from './components/ConnectScreen'
-import { loadStoredHost, storeHost, clearStoredHost } from './serverConfig'
+import { LoginScreen } from './components/LoginScreen'
+import {
+  loadStoredHost,
+  storeHost,
+  clearStoredHost,
+  loadStoredCredentials,
+  storeCredentials,
+  clearStoredCredentials,
+  type Credentials
+} from './serverConfig'
 import './App.css'
 
 function linkZonesToRooms(groups: Group[]): {
@@ -38,6 +47,8 @@ function linkZonesToRooms(groups: Group[]): {
 
 export default function App() {
   const [host, setHost] = useState<string | null>(() => loadStoredHost())
+  const [credentials, setCredentials] = useState<Credentials | null>(() => loadStoredCredentials())
+  const [loginError, setLoginError] = useState(false)
   const [groups, setGroups] = useState<Group[]>([])
   const [scenesMap, setScenesMap] = useState<Record<string, Scene[]>>({})
   const [schedulesMap, setSchedulesMap] = useState<Record<string, RoomSchedule>>({})
@@ -54,8 +65,11 @@ export default function App() {
       setLastRefresh(new Date())
       setError(null)
       setSetupError(null)
+      setLoginError(false)
     } catch (err) {
-      if (err instanceof ApiError && (err.code === 'not_configured' || err.code === 'unauthorized')) {
+      if (err instanceof ApiError && err.code === 'login_failed') {
+        setLoginError(true)
+      } else if (err instanceof ApiError && (err.code === 'not_configured' || err.code === 'unauthorized')) {
         setSetupError(err.code)
       } else {
         setError('Could not reach the server. Is it running?')
@@ -63,15 +77,17 @@ export default function App() {
     }
   }, [])
 
+  const ready = !!host && !!credentials
+
   useEffect(() => {
-    if (!host) return
+    if (!ready) return
     loadGroups().finally(() => setLoading(false))
     const interval = setInterval(loadGroups, 10_000)
     return () => clearInterval(interval)
-  }, [loadGroups, host])
+  }, [loadGroups, ready])
 
   useEffect(() => {
-    if (!host) return
+    if (!ready) return
     fetchScenes().then(scenes => {
       const map: Record<string, Scene[]> = {}
       for (const scene of scenes) {
@@ -80,27 +96,37 @@ export default function App() {
       }
       setScenesMap(map)
     }).catch(() => {})
-  }, [host])
+  }, [ready])
 
   useEffect(() => {
-    if (!host) return
+    if (!ready) return
     fetchSchedules().then(setSchedulesMap).catch(() => {})
-  }, [host])
+  }, [ready])
 
   const handleConnect = (newHost: string) => {
     storeHost(newHost)
     setHost(newHost)
   }
 
-  const handleChangeServer = () => {
+  const handleLogin = (username: string, password: string) => {
+    const newCredentials = { username, password }
+    storeCredentials(newCredentials)
+    setCredentials(newCredentials)
+    setLoginError(false)
+  }
+
+  const handleDisconnect = () => {
     clearStoredHost()
+    clearStoredCredentials()
     setHost(null)
+    setCredentials(null)
     setGroups([])
     setScenesMap({})
     setSchedulesMap({})
     setLoading(true)
     setError(null)
     setSetupError(null)
+    setLoginError(false)
     setLastRefresh(null)
   }
 
@@ -131,8 +157,12 @@ export default function App() {
           {host && (
             <button
               className="refresh-btn"
-              onClick={handleChangeServer}
-              title={`Connected to ${host} — click to change server`}
+              onClick={handleDisconnect}
+              title={
+                credentials
+                  ? `Connected as ${credentials.username}@${host} — click to disconnect`
+                  : `Connected to ${host} — click to disconnect`
+              }
             >
               ⚙
             </button>
@@ -148,6 +178,8 @@ export default function App() {
 
         {!host ? (
           <ConnectScreen onConnect={handleConnect} />
+        ) : !credentials || loginError ? (
+          <LoginScreen error={loginError} onLogin={handleLogin} />
         ) : setupError ? (
           <SetupScreen reason={setupError} />
         ) : loading ? (

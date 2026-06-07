@@ -12,6 +12,7 @@ import {
   activateSmartScene
 } from './hue'
 import { getSchedules, setSchedule, startScheduler } from './schedules'
+import { requireAuth } from './auth'
 
 config()
 
@@ -26,7 +27,8 @@ const hueError = (err: unknown, res: Response) => {
   return res.status(500).json({ error: 'internal' })
 }
 
-app.use(cors())
+app.use(cors({ exposedHeaders: ['WWW-Authenticate'] }))
+app.use('/api', requireAuth)
 app.use(express.json())
 
 app.get('/api/groups', async (_req, res) => {

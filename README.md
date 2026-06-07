@@ -32,6 +32,7 @@ Create a `.env` file in the project root:
 HUE_IP=192.168.x.x        # IP address of your Hue bridge
 HUE_USER=<application-key> # Token from step 1 (or from the Hue developer portal)
 PORT=3001                  # Optional, defaults to 3001
+AUTH_USERS=alice:secret1,bob:secret2 # Optional, see "Authentication" below
 ```
 
 ### 3. Run
@@ -89,6 +90,14 @@ Schedules are persisted to `data/schedules.json` and evaluated server-side every
 - Finds the active slot for each enabled room at the current minute
 - For **scene slots**: applies the scene only if at least one light in the room is already on — lights that are off are left off
 - For **"Turn off" slots**: unconditionally turns the room off
+
+### Authentication
+
+Every `/api/*` route requires HTTP Basic Auth, checked against the
+comma-separated `username:password` pairs in `AUTH_USERS`
+(e.g. `AUTH_USERS=alice:secret1,bob:secret2`). If `AUTH_USERS` is unset, the
+API rejects every request (a warning is logged on startup) — set it in
+`.env` before starting the server.
 
 ### Setup screen
 

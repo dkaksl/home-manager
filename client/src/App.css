@@ -845,6 +845,10 @@ body {
   gap: 10px;
 }
 
+.connect-form--stacked {
+  flex-direction: column;
+}
+
 .connect-form__input {
   flex: 1;
   background: var(--surface-2);
