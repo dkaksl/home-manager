@@ -1,5 +1,7 @@
 # Hue Manager
 
+tmp
+
 A local web app for managing Philips Hue lights. Provides a room-oriented UI for toggling lights, activating scenes, and scheduling automatic scene changes throughout the day.
 
 ![Room overview](docs/screenshots/rooms.png)
