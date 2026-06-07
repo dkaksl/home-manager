@@ -45,6 +45,16 @@ npm run dev
 
 Opens the UI at **http://localhost:3000**. The server runs on port 3001; Vite proxies `/api` requests to it.
 
+### Deploying the client separately
+
+The client doesn't need to be served from the same host as the API — on first load it prompts for a backend host (see `ConnectScreen`) and remembers it in `localStorage`, so a static build can talk to a backend running anywhere on the network.
+
+```sh
+cd client && npm run build
+```
+
+This produces a static bundle in `client/dist/`, deployable to any static host. My own instance is hosted at **[home.kilumanga.com](https://home.kilumanga.com)**.
+
 ---
 
 ## Features
