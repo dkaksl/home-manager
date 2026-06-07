@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import type { Group, Scene, RoomSchedule } from './types'
 import { fetchGroups, fetchScenes, fetchSchedules, saveSchedule, ApiError, type ApiErrorCode } from './api'
 import { GroupCard } from './components/GroupCard'
@@ -58,6 +58,19 @@ export default function App() {
   const [setupError, setSetupError] = useState<ApiErrorCode | null>(null)
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null)
   const [orphansOpen, setOrphansOpen] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
+  const menuRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!menuOpen) return
+    const onClickOutside = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', onClickOutside)
+    return () => document.removeEventListener('mousedown', onClickOutside)
+  }, [menuOpen])
 
   const loadGroups = useCallback(async () => {
     try {
@@ -125,7 +138,23 @@ export default function App() {
     setVerifyingLogin(true)
   }
 
+  const handleReconfigureHost = () => {
+    setMenuOpen(false)
+    clearStoredHost()
+    setHost(null)
+    setGroups([])
+    setScenesMap({})
+    setSchedulesMap({})
+    setLoading(true)
+    setError(null)
+    setSetupError(null)
+    setLoginError(false)
+    setVerifyingLogin(false)
+    setLastRefresh(null)
+  }
+
   const handleDisconnect = () => {
+    setMenuOpen(false)
     clearStoredHost()
     clearStoredCredentials()
     setHost(null)
@@ -166,17 +195,39 @@ export default function App() {
             </span>
           )}
           {host && (
-            <button
-              className="refresh-btn"
-              onClick={handleDisconnect}
-              title={
-                credentials
-                  ? `Connected as ${credentials.username}@${host} — click to disconnect`
-                  : `Connected to ${host} — click to disconnect`
-              }
-            >
-              ⚙
-            </button>
+            <div className="menu" ref={menuRef}>
+              <button
+                className="refresh-btn"
+                onClick={() => setMenuOpen((o) => !o)}
+                title={
+                  credentials
+                    ? `Connected as ${credentials.username}@${host}`
+                    : `Connected to ${host}`
+                }
+              >
+                ⚙
+              </button>
+              {menuOpen && (
+                <div className="menu__panel">
+                  <button className="menu__item" onClick={handleReconfigureHost}>
+                    Reconfigure server
+                  </button>
+                  <button className="menu__item" onClick={handleDisconnect}>
+                    Disconnect
+                  </button>
+                  <div className="menu__divider" />
+                  <a
+                    className="menu__item"
+                    href="https://github.com/dkaksl/home-manager"
+                    target="_blank"
+                    rel="noreferrer"
+                    onClick={() => setMenuOpen(false)}
+                  >
+                    About
+                  </a>
+                </div>
+              )}
+            </div>
           )}
           <button className="refresh-btn" onClick={loadGroups} title="Refresh">
             ↻
