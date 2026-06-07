@@ -109,24 +109,32 @@ If `HUE_USER` is missing from `.env`, the UI shows a "Bridge not configured" scr
 
 ```
 .
-├── bin/                  # One-off CLI scripts (create-user)
-├── client/               # Vite + React frontend
+├── bin/                          # One-off CLI scripts (create-user)
+├── client/                       # Vite + React frontend
 │   └── src/
 │       ├── components/
+│       │   ├── ConnectScreen.tsx # Prompts for backend host
 │       │   ├── GroupCard.tsx     # Room/zone card with lights, scenes, schedule trigger
+│       │   ├── LoginScreen.tsx   # Prompts for username/password
 │       │   ├── ScheduleModal.tsx # Time-slot editor modal
 │       │   └── SetupScreen.tsx   # Shown when bridge is not configured
 │       ├── api.ts                # Typed fetch wrappers
+│       ├── App.tsx               # Top-level state & view routing
 │       ├── sceneIcons.ts         # Scene name → emoji map (shared)
+│       ├── serverConfig.ts       # Host & credential persistence (localStorage)
 │       └── types.ts              # Shared TypeScript interfaces
 ├── data/
-│   └── schedules.json    # Persisted room schedules (auto-created)
+│   └── schedules.json            # Persisted room schedules (auto-created)
+├── docs/
+│   ├── screenshot.mjs            # Captures the screenshots below via Playwright
+│   └── screenshots/              # Images used in this README
 ├── server/
-│   ├── hue.ts            # Hue bridge API wrapper (v1 + v2)
-│   ├── schedules.ts      # Schedule storage + minute-aligned scheduler
-│   └── index.ts          # Express routes
-├── src/                  # Legacy CLI helpers (user auth, bridge discovery)
-└── .env                  # Local config (not committed)
+│   ├── auth.ts                   # HTTP Basic Auth middleware
+│   ├── hue.ts                    # Hue bridge API wrapper (v1 + v2)
+│   ├── index.ts                  # Express routes
+│   └── schedules.ts              # Schedule storage + minute-aligned scheduler
+├── src/                          # Legacy CLI helpers (user auth, bridge discovery)
+└── .env                          # Local config (not committed)
 ```
 
 ## API routes
