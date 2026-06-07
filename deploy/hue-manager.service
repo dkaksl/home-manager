@@ -1,0 +1,15 @@
+[Unit]
+Description=Hue Manager backend
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=__USER__
+WorkingDirectory=__HOME__/home-manager
+ExecStart=__NPM__ run server
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
