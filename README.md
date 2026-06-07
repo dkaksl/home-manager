@@ -103,6 +103,8 @@ Schedules are persisted to `data/schedules.json` and evaluated server-side every
 
 ### Authentication
 
+![Login screen](docs/screenshots/login.png)
+
 Every `/api/*` route requires HTTP Basic Auth, checked against the
 comma-separated `username:password` pairs in `AUTH_USERS`
 (e.g. `AUTH_USERS=alice:secret1,bob:secret2`). If `AUTH_USERS` is unset, the
@@ -110,6 +112,8 @@ API rejects every request (a warning is logged on startup) — set it in
 `.env` before starting the server.
 
 ### Setup screen
+
+![Setup screen](docs/screenshots/setup.png)
 
 If `HUE_USER` is missing from `.env`, the UI shows a "Bridge not configured" screen with setup instructions. If the token is present but rejected by the bridge, it shows an "Unauthorized" screen instead of silently showing an empty room list.
 
