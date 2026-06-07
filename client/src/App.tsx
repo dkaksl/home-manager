@@ -80,31 +80,37 @@ export default function App() {
     }
   }, [])
 
-  const ready = !!host && !!credentials
-
-  useEffect(() => {
-    if (!ready) return
-    loadGroups().finally(() => setLoading(false))
-    const interval = setInterval(loadGroups, 10_000)
-    return () => clearInterval(interval)
-  }, [loadGroups, ready])
-
-  useEffect(() => {
-    if (!ready) return
-    fetchScenes().then(scenes => {
+  const loadScenes = useCallback(async () => {
+    try {
+      const scenes = await fetchScenes()
       const map: Record<string, Scene[]> = {}
       for (const scene of scenes) {
         if (!map[scene.group]) map[scene.group] = []
         map[scene.group].push(scene)
       }
       setScenesMap(map)
-    }).catch(() => {})
-  }, [ready])
+    } catch {
+      // retried on the next refresh cycle below
+    }
+  }, [])
+
+  const loadSchedules = useCallback(async () => {
+    try {
+      setSchedulesMap(await fetchSchedules())
+    } catch {
+      // retried on the next refresh cycle below
+    }
+  }, [])
+
+  const ready = !!host && !!credentials
 
   useEffect(() => {
     if (!ready) return
-    fetchSchedules().then(setSchedulesMap).catch(() => {})
-  }, [ready])
+    const loadAll = () => Promise.all([loadGroups(), loadScenes(), loadSchedules()])
+    loadAll().finally(() => setLoading(false))
+    const interval = setInterval(loadAll, 10_000)
+    return () => clearInterval(interval)
+  }, [loadGroups, loadScenes, loadSchedules, ready])
 
   const handleConnect = (newHost: string) => {
     storeHost(newHost)
