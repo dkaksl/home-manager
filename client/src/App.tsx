@@ -3,6 +3,8 @@ import type { Group, Scene, RoomSchedule } from './types'
 import { fetchGroups, fetchScenes, fetchSchedules, saveSchedule, ApiError, type ApiErrorCode } from './api'
 import { GroupCard } from './components/GroupCard'
 import { SetupScreen } from './components/SetupScreen'
+import { ConnectScreen } from './components/ConnectScreen'
+import { loadStoredHost, storeHost, clearStoredHost } from './serverConfig'
 import './App.css'
 
 function linkZonesToRooms(groups: Group[]): {
@@ -35,6 +37,7 @@ function linkZonesToRooms(groups: Group[]): {
 }
 
 export default function App() {
+  const [host, setHost] = useState<string | null>(() => loadStoredHost())
   const [groups, setGroups] = useState<Group[]>([])
   const [scenesMap, setScenesMap] = useState<Record<string, Scene[]>>({})
   const [schedulesMap, setSchedulesMap] = useState<Record<string, RoomSchedule>>({})
@@ -61,12 +64,14 @@ export default function App() {
   }, [])
 
   useEffect(() => {
+    if (!host) return
     loadGroups().finally(() => setLoading(false))
     const interval = setInterval(loadGroups, 10_000)
     return () => clearInterval(interval)
-  }, [loadGroups])
+  }, [loadGroups, host])
 
   useEffect(() => {
+    if (!host) return
     fetchScenes().then(scenes => {
       const map: Record<string, Scene[]> = {}
       for (const scene of scenes) {
@@ -75,11 +80,29 @@ export default function App() {
       }
       setScenesMap(map)
     }).catch(() => {})
-  }, [])
+  }, [host])
 
   useEffect(() => {
+    if (!host) return
     fetchSchedules().then(setSchedulesMap).catch(() => {})
-  }, [])
+  }, [host])
+
+  const handleConnect = (newHost: string) => {
+    storeHost(newHost)
+    setHost(newHost)
+  }
+
+  const handleChangeServer = () => {
+    clearStoredHost()
+    setHost(null)
+    setGroups([])
+    setScenesMap({})
+    setSchedulesMap({})
+    setLoading(true)
+    setError(null)
+    setSetupError(null)
+    setLastRefresh(null)
+  }
 
   const handleScheduleSave = async (groupId: string, schedule: RoomSchedule) => {
     await saveSchedule(groupId, schedule)
@@ -105,6 +128,15 @@ export default function App() {
               {lastRefresh.toLocaleTimeString()}
             </span>
           )}
+          {host && (
+            <button
+              className="refresh-btn"
+              onClick={handleChangeServer}
+              title={`Connected to ${host} — click to change server`}
+            >
+              ⚙
+            </button>
+          )}
           <button className="refresh-btn" onClick={loadGroups} title="Refresh">
             ↻
           </button>
@@ -114,7 +146,9 @@ export default function App() {
       <div className="app-body">
         {error && <div className="error-banner">{error}</div>}
 
-        {setupError ? (
+        {!host ? (
+          <ConnectScreen onConnect={handleConnect} />
+        ) : setupError ? (
           <SetupScreen reason={setupError} />
         ) : loading ? (
           <div className="loading">

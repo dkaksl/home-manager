@@ -838,6 +838,50 @@ body {
   color: var(--text);
 }
 
+/* ── Connect form ── */
+
+.connect-form {
+  display: flex;
+  gap: 10px;
+}
+
+.connect-form__input {
+  flex: 1;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: 14px;
+  padding: 10px 14px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.connect-form__input:focus {
+  border-color: var(--accent);
+}
+
+.connect-form__submit {
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  color: #000;
+  font-size: 14px;
+  font-weight: 500;
+  padding: 10px 20px;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.connect-form__submit:hover {
+  opacity: 0.85;
+}
+
+.connect-form__submit:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 /* ── Nested zones ── */
 
 .zone-section {

@@ -1,4 +1,5 @@
 import type { Group, LightState, Scene, RoomSchedule } from './types'
+import { apiUrl } from './serverConfig'
 
 export type ApiErrorCode = 'not_configured' | 'unauthorized' | 'unknown'
 
@@ -9,7 +10,7 @@ export class ApiError extends Error {
 }
 
 export const fetchGroups = (): Promise<Group[]> =>
-  fetch('/api/groups').then((r) => {
+  fetch(apiUrl('/api/groups')).then((r) => {
     if (r.status === 503) throw new ApiError('not_configured')
     if (r.status === 401) throw new ApiError('unauthorized')
     if (!r.ok) throw new ApiError('unknown')
@@ -20,21 +21,21 @@ export const setLightState = (
   id: string,
   state: Partial<LightState>
 ): Promise<unknown> =>
-  fetch(`/api/lights/${id}/state`, {
+  fetch(apiUrl(`/api/lights/${id}/state`), {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(state)
   }).then((r) => r.json())
 
 export const setGroupState = (id: string, on: boolean): Promise<unknown> =>
-  fetch(`/api/groups/${id}/state`, {
+  fetch(apiUrl(`/api/groups/${id}/state`), {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ on })
   }).then((r) => r.json())
 
 export const fetchScenes = (): Promise<Scene[]> =>
-  fetch('/api/scenes').then((r) => {
+  fetch(apiUrl('/api/scenes')).then((r) => {
     if (!r.ok) throw new Error(`HTTP ${r.status}`)
     return r.json()
   })
@@ -44,14 +45,14 @@ export const activateScene = (
   sceneId: string,
   type: 'static' | 'smart'
 ): Promise<unknown> =>
-  fetch(`/api/groups/${groupId}/scene`, {
+  fetch(apiUrl(`/api/groups/${groupId}/scene`), {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ sceneId, type })
   }).then((r) => r.json())
 
 export const fetchSchedules = (): Promise<Record<string, RoomSchedule>> =>
-  fetch('/api/schedules').then((r) => {
+  fetch(apiUrl('/api/schedules')).then((r) => {
     if (!r.ok) throw new Error(`HTTP ${r.status}`)
     return r.json()
   })
@@ -60,7 +61,7 @@ export const saveSchedule = (
   groupId: string,
   schedule: RoomSchedule
 ): Promise<unknown> =>
-  fetch(`/api/schedules/${groupId}`, {
+  fetch(apiUrl(`/api/schedules/${groupId}`), {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(schedule)
