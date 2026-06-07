@@ -29,10 +29,10 @@ This writes your application key to `output/authenticated-users.txt`.
 Create a `.env` file in the project root:
 
 ```ini
-HUE_IP=192.168.x.x        # IP address of your Hue bridge
-HUE_USER=<application-key> # Token from step 1 (or from the Hue developer portal)
-PORT=3001                  # Optional, defaults to 3001
-AUTH_USERS=alice:secret1,bob:secret2 # Optional, see "Authentication" below
+HUE_IP=192.168.x.x                   # IP address of your Hue bridge
+HUE_USER=<application-key>           # Token from step 1 (or from the Hue developer portal)
+PORT=3001                            # Optional, defaults to 3001
+AUTH_USERS=alice:secret1,bob:secret2 # Required, see "Authentication" below
 ```
 
 ### 3. Run
