@@ -49,6 +49,7 @@ export default function App() {
   const [host, setHost] = useState<string | null>(() => loadStoredHost())
   const [credentials, setCredentials] = useState<Credentials | null>(() => loadStoredCredentials())
   const [loginError, setLoginError] = useState(false)
+  const [verifyingLogin, setVerifyingLogin] = useState(false)
   const [groups, setGroups] = useState<Group[]>([])
   const [scenesMap, setScenesMap] = useState<Record<string, Scene[]>>({})
   const [schedulesMap, setSchedulesMap] = useState<Record<string, RoomSchedule>>({})
@@ -74,6 +75,8 @@ export default function App() {
       } else {
         setError('Could not reach the server. Is it running?')
       }
+    } finally {
+      setVerifyingLogin(false)
     }
   }, [])
 
@@ -113,6 +116,7 @@ export default function App() {
     storeCredentials(newCredentials)
     setCredentials(newCredentials)
     setLoginError(false)
+    setVerifyingLogin(true)
   }
 
   const handleDisconnect = () => {
@@ -127,6 +131,7 @@ export default function App() {
     setError(null)
     setSetupError(null)
     setLoginError(false)
+    setVerifyingLogin(false)
     setLastRefresh(null)
   }
 
@@ -178,8 +183,8 @@ export default function App() {
 
         {!host ? (
           <ConnectScreen onConnect={handleConnect} />
-        ) : !credentials || loginError ? (
-          <LoginScreen error={loginError} onLogin={handleLogin} />
+        ) : !credentials || loginError || verifyingLogin ? (
+          <LoginScreen error={loginError} loading={verifyingLogin} onLogin={handleLogin} />
         ) : setupError ? (
           <SetupScreen reason={setupError} />
         ) : loading ? (

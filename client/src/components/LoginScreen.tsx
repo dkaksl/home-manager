@@ -2,10 +2,11 @@ import { useState, type FormEvent } from 'react'
 
 interface Props {
   error?: boolean
+  loading?: boolean
   onLogin: (username: string, password: string) => void
 }
 
-export function LoginScreen({ error, onLogin }: Props) {
+export function LoginScreen({ error, loading, onLogin }: Props) {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
 
@@ -41,6 +42,7 @@ export function LoginScreen({ error, onLogin }: Props) {
             placeholder="Username"
             value={username}
             onChange={e => setUsername(e.target.value)}
+            disabled={loading}
             autoFocus
           />
           <input
@@ -49,13 +51,14 @@ export function LoginScreen({ error, onLogin }: Props) {
             placeholder="Password"
             value={password}
             onChange={e => setPassword(e.target.value)}
+            disabled={loading}
           />
           <button
             className="connect-form__submit"
             type="submit"
-            disabled={!username || !password}
+            disabled={!username || !password || loading}
           >
-            Log in
+            {loading ? 'Signing in…' : 'Log in'}
           </button>
         </form>
       </div>
