@@ -6,8 +6,6 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "create-user": "ts-node bin/create-user.ts",
-    "fetch-bridge-details": "ts-node bin/fetch-bridge-details.ts",
-    "mood-lights": "ts-node bin/mood-lights.ts",
     "server": "ts-node server/index.ts",
     "client": "npm run dev --prefix client",
     "dev": "concurrently \"npm run server\" \"npm run client\""

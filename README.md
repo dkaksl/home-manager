@@ -6,11 +6,11 @@ A local web app for managing Philips Hue lights. Provides a room-oriented UI for
 
 ## Stack
 
-| Layer | Tech |
-|---|---|
-| Server | Node.js + Express + TypeScript (`ts-node`) |
-| Client | React 18 + Vite + TypeScript |
-| Bridge API | Hue v1 (`http`) + Hue v2 (`https/CLIP`) |
+| Layer      | Tech                                       |
+| ---------- | ------------------------------------------ |
+| Server     | Node.js + Express + TypeScript (`ts-node`) |
+| Client     | React 18 + Vite + TypeScript               |
+| Bridge API | Hue v1 (`http`) + Hue v2 (`https/CLIP`)    |
 
 ## Getting started
 
@@ -67,7 +67,7 @@ Scene buttons appear at the top of each card. The first three scenes are pinned 
 2. **Rest**
 3. **Nightlight**
 
-Remaining scenes are hidden behind a collapsible **···  More** button. Scenes are fetched from both the Hue v1 API (static `GroupScene` entries) and the Hue v2 API (`smart_scene` resources), merged, and associated with their room.
+Remaining scenes are hidden behind a collapsible **··· More** button. Scenes are fetched from both the Hue v1 API (static `GroupScene` entries) and the Hue v2 API (`smart_scene` resources), merged, and associated with their room.
 
 The active scene is highlighted. Activating a scene optimistically updates the UI and fires the bridge command in the background. The UI re-syncs with the bridge every 10 seconds.
 
@@ -109,7 +109,7 @@ If `HUE_USER` is missing from `.env`, the UI shows a "Bridge not configured" scr
 
 ```
 .
-├── bin/                  # One-off CLI scripts (create-user, fetch-bridge-details)
+├── bin/                  # One-off CLI scripts (create-user)
 ├── client/               # Vite + React frontend
 │   └── src/
 │       ├── components/
@@ -131,13 +131,13 @@ If `HUE_USER` is missing from `.env`, the UI shows a "Bridge not configured" scr
 
 ## API routes
 
-| Method | Path | Description |
-|---|---|---|
-| `GET` | `/api/groups` | All rooms and zones with enriched light details |
-| `GET` | `/api/lights` | All individual lights |
-| `PUT` | `/api/lights/:id/state` | Set a single light's state |
-| `PUT` | `/api/groups/:id/state` | Turn a group on or off |
-| `GET` | `/api/scenes` | All scenes (static + smart), grouped by room |
-| `PUT` | `/api/groups/:id/scene` | Activate a scene (static or smart) |
-| `GET` | `/api/schedules` | All room schedules |
-| `PUT` | `/api/schedules/:groupId` | Save a room's schedule |
+| Method | Path                      | Description                                     |
+| ------ | ------------------------- | ----------------------------------------------- |
+| `GET`  | `/api/groups`             | All rooms and zones with enriched light details |
+| `GET`  | `/api/lights`             | All individual lights                           |
+| `PUT`  | `/api/lights/:id/state`   | Set a single light's state                      |
+| `PUT`  | `/api/groups/:id/state`   | Turn a group on or off                          |
+| `GET`  | `/api/scenes`             | All scenes (static + smart), grouped by room    |
+| `PUT`  | `/api/groups/:id/scene`   | Activate a scene (static or smart)              |
+| `GET`  | `/api/schedules`          | All room schedules                              |
+| `PUT`  | `/api/schedules/:groupId` | Save a room's schedule                          |
