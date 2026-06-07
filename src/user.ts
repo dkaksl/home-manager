@@ -1,4 +1,3 @@
-import fetch from 'node-fetch'
 import { cleanEnv, str } from 'envalid'
 import { config } from 'dotenv'
 import { appendFileSync, mkdirSync, existsSync, readFileSync } from 'fs'

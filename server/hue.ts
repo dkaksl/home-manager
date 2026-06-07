@@ -1,5 +1,4 @@
-import https from 'https'
-import fetch from 'node-fetch'
+import { Agent } from 'undici'
 import { config } from 'dotenv'
 
 config()
@@ -57,7 +56,7 @@ const apiBase = () => `http://${HUE_IP}/api/${getUser()}`
 // v2 API (HTTPS, self-signed cert on bridge)
 const v2Base = () => `https://${HUE_IP}/clip/v2/resource`
 const v2Headers = () => ({ 'hue-application-key': getUser() })
-const v2Agent = new https.Agent({ rejectUnauthorized: false })
+const v2Agent = new Agent({ connect: { rejectUnauthorized: false } })
 
 // The v1 bridge returns [{error:{type:1,...}}] for an invalid user token
 const assertAuthOk = (json: unknown) => {
@@ -71,7 +70,9 @@ export const getLights = async (): Promise<Record<string, Light>> => {
   const json = await res.json()
   assertAuthOk(json)
   return Object.fromEntries(
-    Object.entries(json as Record<string, Omit<Light, 'id'>>).map(([id, light]) => [id, { ...light, id }])
+    Object.entries(json as Record<string, Omit<Light, 'id'>>).map(
+      ([id, light]) => [id, { ...light, id }]
+    )
   )
 }
 
@@ -80,15 +81,17 @@ export const getGroups = async (): Promise<Record<string, Group>> => {
   const json = await res.json()
   assertAuthOk(json)
   return Object.fromEntries(
-    Object.entries(json as Record<string, Omit<Group, 'id'>>).map(([id, group]) => [id, { ...group, id }])
+    Object.entries(json as Record<string, Omit<Group, 'id'>>).map(
+      ([id, group]) => [id, { ...group, id }]
+    )
   )
 }
 
 export const getEnrichedGroups = async (): Promise<EnrichedGroup[]> => {
   const [groups, lights] = await Promise.all([getGroups(), getLights()])
-  return Object.values(groups).map(group => ({
+  return Object.values(groups).map((group) => ({
     ...group,
-    lightDetails: group.lights.map(id => lights[id]).filter(Boolean)
+    lightDetails: group.lights.map((id) => lights[id]).filter(Boolean)
   }))
 }
 
@@ -131,13 +134,23 @@ export const getScenes = async (): Promise<Scene[]> => {
   >
   return Object.entries(json)
     .filter(([, v]) => v.type === 'GroupScene' && v.group)
-    .map(([id, v]): Scene => ({ id, name: v.name, group: v.group!, type: 'static' }))
+    .map(
+      ([id, v]): Scene => ({
+        id,
+        name: v.name,
+        group: v.group!,
+        type: 'static'
+      })
+    )
 }
 
 // Returns a map of v2 room UUID → v1 group ID, matched by room name
 const getV2ToV1GroupMap = async (): Promise<Record<string, string>> => {
   const [v2Res, v1Groups] = await Promise.all([
-    fetch(`${v2Base()}/room`, { headers: v2Headers(), agent: v2Agent } as Parameters<typeof fetch>[1]),
+    fetch(`${v2Base()}/room`, {
+      headers: v2Headers(),
+      dispatcher: v2Agent
+    } as Parameters<typeof fetch>[1]),
     getGroups()
   ])
   const v2Data = (await v2Res.json()) as {
@@ -147,21 +160,28 @@ const getV2ToV1GroupMap = async (): Promise<Record<string, string>> => {
     Object.entries(v1Groups).map(([id, g]) => [g.name, id])
   )
   return Object.fromEntries(
-    v2Data.data.map(r => [r.id, nameToV1Id[r.metadata.name] ?? ''])
+    v2Data.data.map((r) => [r.id, nameToV1Id[r.metadata.name] ?? ''])
   )
 }
 
 export const getSmartScenes = async (): Promise<Scene[]> => {
   const [res, v2ToV1] = await Promise.all([
-    fetch(`${v2Base()}/smart_scene`, { headers: v2Headers(), agent: v2Agent } as Parameters<typeof fetch>[1]),
+    fetch(`${v2Base()}/smart_scene`, {
+      headers: v2Headers(),
+      dispatcher: v2Agent
+    } as Parameters<typeof fetch>[1]),
     getV2ToV1GroupMap()
   ])
   const json = (await res.json()) as {
-    data: Array<{ id: string; metadata: { name: string }; group: { rid: string } }>
+    data: Array<{
+      id: string
+      metadata: { name: string }
+      group: { rid: string }
+    }>
   }
   return json.data
-    .filter(ss => v2ToV1[ss.group.rid])
-    .map(ss => ({
+    .filter((ss) => v2ToV1[ss.group.rid])
+    .map((ss) => ({
       id: ss.id,
       name: ss.metadata.name,
       group: v2ToV1[ss.group.rid],
@@ -173,7 +193,7 @@ export const activateSmartScene = async (smartSceneId: string) => {
   const res = await fetch(`${v2Base()}/smart_scene/${smartSceneId}`, {
     method: 'PUT',
     headers: { ...v2Headers(), 'Content-Type': 'application/json' },
-    agent: v2Agent,
+    dispatcher: v2Agent,
     body: JSON.stringify({ recall: { action: 'activate' } })
   } as Parameters<typeof fetch>[1])
   return res.json()
