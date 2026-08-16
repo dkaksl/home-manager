@@ -68,6 +68,10 @@ export default function App() {
   const [setupError, setSetupError] = useState<ApiErrorCode | null>(null)
   const [lastRefresh, setLastRefresh] = useState<Date | null>(null)
   const [orphansOpen, setOrphansOpen] = useState(false)
+  // groupIds with an in-flight schedule mutation (kill switch, schedule save)
+  // — the 10s poll below must not clobber these with a response that may
+  // have been in flight since before the mutation started.
+  const pendingScheduleIds = useRef<Set<string>>(new Set())
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
 
@@ -119,7 +123,16 @@ export default function App() {
 
   const loadSchedules = useCallback(async () => {
     try {
-      setSchedulesMap(await fetchSchedules())
+      const fetched = await fetchSchedules()
+      setSchedulesMap(prev => {
+        const next = { ...fetched }
+        // Keep our own optimistic value for any room with a mutation still
+        // in flight, rather than letting a same-or-earlier GET overwrite it.
+        for (const id of pendingScheduleIds.current) {
+          if (prev[id]) next[id] = prev[id]
+        }
+        return next
+      })
     } catch {
       // retried on the next refresh cycle below
     }
@@ -192,11 +205,17 @@ export default function App() {
   }
 
   const handleScheduleSave = async (groupId: string, schedule: RoomSchedule) => {
-    await saveSchedule(groupId, schedule)
+    pendingScheduleIds.current.add(groupId)
     setSchedulesMap(prev => ({ ...prev, [groupId]: schedule }))
+    try {
+      await saveSchedule(groupId, schedule)
+    } finally {
+      pendingScheduleIds.current.delete(groupId)
+    }
   }
 
   const handleKillSwitchToggle = async (groupId: string, enabled: boolean) => {
+    pendingScheduleIds.current.add(groupId)
     setSchedulesMap(prev => ({
       ...prev,
       [groupId]: {
@@ -204,7 +223,11 @@ export default function App() {
         killSwitch: enabled
       }
     }))
-    await setKillSwitch(groupId, enabled)
+    try {
+      await setKillSwitch(groupId, enabled)
+    } finally {
+      pendingScheduleIds.current.delete(groupId)
+    }
   }
 
   const updateGroup = (updated: Group) => {
