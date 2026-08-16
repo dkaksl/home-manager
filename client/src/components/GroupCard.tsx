@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import type { Group, Scene, RoomSchedule } from '../types'
+import type { Group, Scene, RoomSchedule, Sensor } from '../types'
 import { setLightState, setGroupState, activateScene } from '../api'
 import { sceneIcon } from '../sceneIcons'
 import { ScheduleModal } from './ScheduleModal'
@@ -45,8 +45,10 @@ interface Props {
   zones?: Group[]
   scenes?: Scene[]
   schedule?: RoomSchedule
+  sensors?: Sensor[]
   onUpdate: (updated: Group) => void
   onScheduleSave?: (schedule: RoomSchedule) => Promise<void>
+  onKillSwitchToggle?: (enabled: boolean) => Promise<void>
 }
 
 export function GroupCard({
@@ -54,8 +56,10 @@ export function GroupCard({
   zones,
   scenes = [],
   schedule,
+  sensors = [],
   onUpdate,
-  onScheduleSave
+  onScheduleSave,
+  onKillSwitchToggle
 }: Props) {
   const { id, name, type, class: cls, state, lightDetails } = group
   const isOn = state.any_on
@@ -67,6 +71,7 @@ export function GroupCard({
   const [scheduleOpen, setScheduleOpen] = useState(false)
 
   const scheduleActive = schedule?.enabled ?? false
+  const killSwitchActive = schedule?.killSwitch ?? false
 
   const sorted = sortScenes(scenes)
   const visibleScenes = sorted.slice(0, 3)
@@ -116,6 +121,19 @@ export function GroupCard({
     await activateScene(id, scene.id, scene.type)
   }
 
+  const handleKillSwitchToggle = async () => {
+    if (!onKillSwitchToggle) return
+    const next = !killSwitchActive
+    if (next) {
+      onUpdate({
+        ...group,
+        state: { all_on: false, any_on: false },
+        lightDetails: lightDetails.map((l) => ({ ...l, state: { ...l.state, on: false } }))
+      })
+    }
+    await onKillSwitchToggle(next)
+  }
+
   return (
     <div className={`group-card ${isOn ? 'group-card--on' : ''}`}>
       <div className="group-card__header">
@@ -136,6 +154,15 @@ export function GroupCard({
               ⏰
             </button>
           )}
+          {type === 'Room' && onKillSwitchToggle && (
+            <button
+              className={`kill-switch-btn ${killSwitchActive ? 'kill-switch-btn--active' : ''}`}
+              onClick={handleKillSwitchToggle}
+              title={killSwitchActive ? 'Kill switch on — tap to release' : 'Kill switch'}
+            >
+              🚫
+            </button>
+          )}
           <button
             className={`toggle toggle--group ${isOn ? 'toggle--on' : ''}`}
             onClick={handleGroupToggle}
@@ -152,6 +179,7 @@ export function GroupCard({
         <ScheduleModal
           group={group}
           scenes={scenes}
+          sensors={sensors}
           initialSchedule={schedule}
           onClose={() => setScheduleOpen(false)}
           onSave={onScheduleSave}

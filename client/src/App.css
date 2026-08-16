@@ -573,6 +573,37 @@ body {
   box-shadow: 0 0 0 2px rgba(245, 166, 35, 0.45);
 }
 
+/* ── Kill switch button in card header ── */
+
+.kill-switch-btn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 15px;
+  padding: 4px;
+  border-radius: 6px;
+  line-height: 1;
+  filter: grayscale(1);
+  opacity: 0.7;
+  transition: filter 0.15s, opacity 0.15s, box-shadow 0.15s;
+}
+
+.kill-switch-btn:hover {
+  filter: none;
+  opacity: 1;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.18);
+}
+
+.kill-switch-btn--active {
+  filter: none;
+  opacity: 1;
+  box-shadow: 0 0 0 2px rgba(255, 70, 70, 0.45);
+}
+
+.kill-switch-btn--active:hover {
+  box-shadow: 0 0 0 2px rgba(255, 70, 70, 0.65);
+}
+
 /* ── Schedule modal ── */
 
 .modal-overlay {
@@ -774,6 +805,40 @@ body {
 .add-slot-btn:hover {
   color: var(--text);
   border-color: rgba(255, 255, 255, 0.2);
+}
+
+/* ── Auto-off section ── */
+
+.auto-off-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.auto-off-row {
+  display: flex;
+  gap: 10px;
+}
+
+.auto-off-field {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.auto-off-field select,
+.auto-off-field input {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 13px;
+  padding: 5px 8px;
 }
 
 .modal__footer {

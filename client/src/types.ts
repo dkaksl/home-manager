@@ -33,10 +33,25 @@ export interface TimeSlot {
   sceneType: 'static' | 'smart' | 'off'
 }
 
+export interface AutoOffConfig {
+  enabled: boolean
+  timeoutMinutes: number
+  sensorId: string | null // null = plain timer (off N min after the room turns on)
+}
+
 export interface RoomSchedule {
   groupId: string
   enabled: boolean
   slots: TimeSlot[]
+  killSwitch?: boolean
+  autoOff?: AutoOffConfig
+}
+
+export interface Sensor {
+  id: string
+  name: string
+  presence: boolean
+  lastupdated: string
 }
 
 export interface GroupState {

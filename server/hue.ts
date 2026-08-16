@@ -207,3 +207,24 @@ export const activateScene = async (groupId: string, sceneId: string) => {
   })
   return res.json()
 }
+
+export interface Sensor {
+  id: string
+  name: string
+  state: {
+    presence?: boolean
+    lastupdated?: string
+  }
+}
+
+// Includes Hue's own motion sensors as well as third-party (e.g. IKEA
+// TRÅDFRI) presence sensors paired directly to the bridge — both expose a
+// boolean `state.presence`, which is what we filter on.
+export const getSensors = async (): Promise<Sensor[]> => {
+  const res = await fetch(`${apiBase()}/sensors`)
+  const json = await res.json()
+  assertAuthOk(json)
+  return Object.entries(json as Record<string, Omit<Sensor, 'id'>>)
+    .filter(([, s]) => typeof s.state?.presence === 'boolean')
+    .map(([id, s]) => ({ ...s, id }))
+}

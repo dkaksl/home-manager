@@ -1,6 +1,12 @@
 import { useState, type ReactNode } from 'react'
-import type { Group, Scene, TimeSlot, RoomSchedule } from '../types'
+import type { AutoOffConfig, Group, Scene, Sensor, TimeSlot, RoomSchedule } from '../types'
 import { sceneIcon } from '../sceneIcons'
+
+const DEFAULT_AUTO_OFF: AutoOffConfig = {
+  enabled: false,
+  timeoutMinutes: 30,
+  sensorId: null
+}
 
 // ── Time helpers ─────────────────────────────────────────────────────────
 
@@ -153,6 +159,7 @@ const sanitize = (slots: TimeSlot[]): TimeSlot[] => {
 interface Props {
   group: Group
   scenes: Scene[]
+  sensors?: Sensor[]
   initialSchedule: RoomSchedule | undefined
   onClose: () => void
   onSave: (schedule: RoomSchedule) => Promise<void>
@@ -161,6 +168,7 @@ interface Props {
 export function ScheduleModal({
   group,
   scenes,
+  sensors = [],
   initialSchedule,
   onClose,
   onSave
@@ -168,6 +176,9 @@ export function ScheduleModal({
   const [enabled, setEnabled] = useState(initialSchedule?.enabled ?? false)
   const [slots, setSlots] = useState<TimeSlot[]>(() =>
     sanitize(initialSchedule?.slots ?? [])
+  )
+  const [autoOff, setAutoOff] = useState<AutoOffConfig>(
+    initialSchedule?.autoOff ?? DEFAULT_AUTO_OFF
   )
   const [saving, setSaving] = useState(false)
 
@@ -206,7 +217,7 @@ export function ScheduleModal({
   const handleSave = async () => {
     setSaving(true)
     try {
-      await onSave({ groupId: group.id, enabled, slots })
+      await onSave({ ...initialSchedule, groupId: group.id, enabled, slots, autoOff })
       onClose()
     } finally {
       setSaving(false)
@@ -321,6 +332,60 @@ export function ScheduleModal({
               + Add time slot
             </button>
           )}
+
+          <div className="auto-off-section">
+            <div className="modal__enable-row">
+              <span>Auto-off after inactivity</span>
+              <button
+                className={`toggle ${autoOff.enabled ? 'toggle--on' : ''}`}
+                onClick={() =>
+                  setAutoOff((a) => ({ ...a, enabled: !a.enabled }))
+                }
+              >
+                <span className="toggle__track">
+                  <span className="toggle__thumb" />
+                </span>
+              </button>
+            </div>
+
+            {autoOff.enabled && (
+              <div className="auto-off-row">
+                <label className="auto-off-field">
+                  <span>Sensor</span>
+                  <select
+                    value={autoOff.sensorId ?? ''}
+                    onChange={(e) =>
+                      setAutoOff((a) => ({
+                        ...a,
+                        sensorId: e.target.value || null
+                      }))
+                    }
+                  >
+                    <option value="">No sensor (timer only)</option>
+                    {sensors.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="auto-off-field">
+                  <span>After (minutes)</span>
+                  <input
+                    type="number"
+                    min={1}
+                    value={autoOff.timeoutMinutes}
+                    onChange={(e) =>
+                      setAutoOff((a) => ({
+                        ...a,
+                        timeoutMinutes: Math.max(1, Number(e.target.value) || 1)
+                      }))
+                    }
+                  />
+                </label>
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="modal__footer">

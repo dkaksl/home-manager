@@ -1,6 +1,15 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import type { Group, Scene, RoomSchedule } from './types'
-import { fetchGroups, fetchScenes, fetchSchedules, saveSchedule, ApiError, type ApiErrorCode } from './api'
+import type { Group, Scene, RoomSchedule, Sensor } from './types'
+import {
+  fetchGroups,
+  fetchScenes,
+  fetchSchedules,
+  fetchSensors,
+  saveSchedule,
+  setKillSwitch,
+  ApiError,
+  type ApiErrorCode
+} from './api'
 import { GroupCard } from './components/GroupCard'
 import { SetupScreen } from './components/SetupScreen'
 import { ConnectScreen } from './components/ConnectScreen'
@@ -53,6 +62,7 @@ export default function App() {
   const [groups, setGroups] = useState<Group[]>([])
   const [scenesMap, setScenesMap] = useState<Record<string, Scene[]>>({})
   const [schedulesMap, setSchedulesMap] = useState<Record<string, RoomSchedule>>({})
+  const [sensors, setSensors] = useState<Sensor[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [setupError, setSetupError] = useState<ApiErrorCode | null>(null)
@@ -115,15 +125,24 @@ export default function App() {
     }
   }, [])
 
+  const loadSensors = useCallback(async () => {
+    try {
+      setSensors(await fetchSensors())
+    } catch {
+      // retried on the next refresh cycle below
+    }
+  }, [])
+
   const ready = !!host && !!credentials
 
   useEffect(() => {
     if (!ready) return
-    const loadAll = () => Promise.all([loadGroups(), loadScenes(), loadSchedules()])
+    const loadAll = () =>
+      Promise.all([loadGroups(), loadScenes(), loadSchedules(), loadSensors()])
     loadAll().finally(() => setLoading(false))
     const interval = setInterval(loadAll, 10_000)
     return () => clearInterval(interval)
-  }, [loadGroups, loadScenes, loadSchedules, ready])
+  }, [loadGroups, loadScenes, loadSchedules, loadSensors, ready])
 
   const handleConnect = (newHost: string) => {
     storeHost(newHost)
@@ -145,6 +164,7 @@ export default function App() {
     setGroups([])
     setScenesMap({})
     setSchedulesMap({})
+    setSensors([])
     setLoading(true)
     setError(null)
     setSetupError(null)
@@ -162,6 +182,7 @@ export default function App() {
     setGroups([])
     setScenesMap({})
     setSchedulesMap({})
+    setSensors([])
     setLoading(true)
     setError(null)
     setSetupError(null)
@@ -173,6 +194,17 @@ export default function App() {
   const handleScheduleSave = async (groupId: string, schedule: RoomSchedule) => {
     await saveSchedule(groupId, schedule)
     setSchedulesMap(prev => ({ ...prev, [groupId]: schedule }))
+  }
+
+  const handleKillSwitchToggle = async (groupId: string, enabled: boolean) => {
+    setSchedulesMap(prev => ({
+      ...prev,
+      [groupId]: {
+        ...(prev[groupId] ?? { groupId, enabled: false, slots: [] }),
+        killSwitch: enabled
+      }
+    }))
+    await setKillSwitch(groupId, enabled)
   }
 
   const updateGroup = (updated: Group) => {
@@ -264,8 +296,10 @@ export default function App() {
                     zones={linkedZones[room.id]}
                     scenes={scenesMap[room.id] ?? []}
                     schedule={schedulesMap[room.id]}
+                    sensors={sensors}
                     onUpdate={updateGroup}
                     onScheduleSave={s => handleScheduleSave(room.id, s)}
+                    onKillSwitchToggle={enabled => handleKillSwitchToggle(room.id, enabled)}
                   />
                 ))}
               </div>

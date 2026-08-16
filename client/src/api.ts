@@ -1,4 +1,4 @@
-import type { Group, LightState, Scene, RoomSchedule } from './types'
+import type { Group, LightState, Scene, RoomSchedule, Sensor } from './types'
 import { apiUrl, authHeaders } from './serverConfig'
 
 export type ApiErrorCode = 'login_failed' | 'not_configured' | 'unauthorized' | 'unknown'
@@ -80,4 +80,18 @@ export const saveSchedule = (
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(schedule)
+  }).then((r) => r.json())
+
+export const fetchSensors = (): Promise<Sensor[]> =>
+  apiFetch('/api/sensors').then((r) => {
+    checkAuthResponse(r)
+    if (!r.ok) throw new Error(`HTTP ${r.status}`)
+    return r.json()
+  })
+
+export const setKillSwitch = (groupId: string, enabled: boolean): Promise<unknown> =>
+  apiFetch(`/api/rooms/${groupId}/kill-switch`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ enabled })
   }).then((r) => r.json())

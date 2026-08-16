@@ -4,6 +4,7 @@ import { config } from 'dotenv'
 import {
   getEnrichedGroups,
   getLights,
+  getSensors,
   setLightState,
   setGroupAction,
   getScenes,
@@ -83,6 +84,38 @@ app.put('/api/groups/:id/scene', async (req, res) => {
       ? await activateSmartScene(sceneId)
       : await activateScene(req.params.id, sceneId)
     res.json(result)
+  } catch (err) {
+    hueError(err, res)
+  }
+})
+
+app.get('/api/sensors', async (_req, res) => {
+  try {
+    const sensors = await getSensors()
+    res.json(
+      sensors.map((s) => ({
+        id: s.id,
+        name: s.name,
+        presence: !!s.state.presence,
+        lastupdated: s.state.lastupdated ?? ''
+      }))
+    )
+  } catch (err) {
+    hueError(err, res)
+  }
+})
+
+app.put('/api/rooms/:id/kill-switch', async (req, res) => {
+  try {
+    const { enabled } = req.body as { enabled: boolean }
+    const existing = getSchedules()[req.params.id] ?? {
+      groupId: req.params.id,
+      enabled: false,
+      slots: []
+    }
+    setSchedule(req.params.id, { ...existing, killSwitch: enabled })
+    if (enabled) await setGroupAction(req.params.id, { on: false })
+    res.json({ ok: true })
   } catch (err) {
     hueError(err, res)
   }
