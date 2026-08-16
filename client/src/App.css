@@ -559,9 +559,14 @@ body {
   transition: filter 0.15s, box-shadow 0.15s;
 }
 
-.schedule-btn:hover {
-  filter: none;
-  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.18);
+/* Gated to real pointer devices: on touch, :hover sticks after a tap until
+   the user taps elsewhere, which would otherwise make a single tap look
+   like it left the button in its "on" (ungrayscaled) look. */
+@media (hover: hover) and (pointer: fine) {
+  .schedule-btn:hover {
+    filter: none;
+    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.18);
+  }
 }
 
 .schedule-btn--active {
@@ -588,10 +593,12 @@ body {
   transition: filter 0.15s, opacity 0.15s, box-shadow 0.15s;
 }
 
-.kill-switch-btn:hover {
-  filter: none;
-  opacity: 1;
-  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.18);
+@media (hover: hover) and (pointer: fine) {
+  .kill-switch-btn:hover {
+    filter: none;
+    opacity: 1;
+    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.18);
+  }
 }
 
 .kill-switch-btn--active {
