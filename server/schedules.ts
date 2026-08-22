@@ -3,6 +3,7 @@ import path from 'path'
 import {
   getEnrichedGroups,
   getSensors,
+  getSwitchSensorIds,
   setGroupAction,
   setLightState,
   activateScene,
@@ -42,6 +43,14 @@ interface ActivityAnchor {
 }
 const activityAnchors = new Map<string, ActivityAnchor>()
 
+// Tracks, per room, the id of the slot that was active on the previous tick
+// (or null when no slot was active). Slot application is edge-triggered off
+// this — only when the active slot id changes do we recall a scene — so a
+// slot that's been active for many ticks in a row is left alone instead of
+// being re-recalled every minute, which was what caused manually-off lights
+// to flicker on and back off each tick.
+const lastActiveSlot = new Map<string, string | null>()
+
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 const load = (): Record<string, RoomSchedule> => {
@@ -71,6 +80,34 @@ const toMin = (hhmm: string): number => {
   return h * 60 + m
 }
 
+// A light belongs to exactly one Room, but can also be pulled into any
+// number of Zones/Entertainment groups that carve out a subset of a room's
+// lights (e.g. "Vardagsrum" is a zone over lights that live in the "Nere"
+// room). A switch is only ever linked to the owning Room, never to those
+// derived zones — so whether a group's lights sit behind a switch has to be
+// resolved back to each light's owning Room, not read off the group being
+// scheduled directly.
+const computeSwitchCoverage = (
+  groups: Awaited<ReturnType<typeof getEnrichedGroups>>,
+  switchSensorIds: Set<string>
+): Map<string, boolean> => {
+  const switchByLight = new Map<string, boolean>()
+  for (const g of groups) {
+    if (g.type !== 'Room') continue
+    const hasSwitch = g.sensors.some((id) => switchSensorIds.has(id))
+    for (const lightId of g.lights) switchByLight.set(lightId, hasSwitch)
+  }
+
+  const coverage = new Map<string, boolean>()
+  for (const g of groups) {
+    coverage.set(
+      g.id,
+      g.lights.length > 0 && g.lights.every((id) => switchByLight.get(id))
+    )
+  }
+  return coverage
+}
+
 const inSlot = (nowMin: number, slot: TimeSlot): boolean => {
   const s = toMin(slot.startTime)
   const e = toMin(slot.endTime)
@@ -81,16 +118,21 @@ const inSlot = (nowMin: number, slot: TimeSlot): boolean => {
 // Applies a scene slot, then restores pre-scene off-state to any light that
 // was off beforehand — a group scene recall otherwise turns every light in
 // the room back on, including ones the user just switched off by hand.
+// `respectManualOff` is false for rooms with no linked wall switch (see
+// `getSwitchSensorIds`), since a breaker-only room's "off" bridge state can't
+// be trusted as a deliberate override — there's no switch to press, and
+// flipping the breaker back on doesn't restore the bridge's own on-flag.
 const applySceneSlot = async (
   groupId: string,
   slot: TimeSlot,
-  group: Awaited<ReturnType<typeof getEnrichedGroups>>[number]
+  group: Awaited<ReturnType<typeof getEnrichedGroups>>[number],
+  respectManualOff: boolean
 ) => {
-  if (!group.state.any_on) return
+  if (respectManualOff && !group.state.any_on) return
 
-  const offLightIds = group.lightDetails
-    .filter((l) => !l.state.on)
-    .map((l) => l.id)
+  const offLightIds = respectManualOff
+    ? group.lightDetails.filter((l) => !l.state.on).map((l) => l.id)
+    : []
 
   if (slot.sceneType === 'smart') {
     await activateSmartScene(slot.sceneId)
@@ -179,10 +221,16 @@ const tick = async () => {
   )
   const needsSensors = relevant.some((s) => s.autoOff?.enabled && s.autoOff.sensorId)
 
-  const [groups, sensors] = await Promise.all([
+  const [groups, sensors, switchSensorIds] = await Promise.all([
     needsGroups ? getEnrichedGroups() : Promise.resolve(null),
-    needsSensors ? getSensors() : Promise.resolve(null)
+    needsSensors ? getSensors() : Promise.resolve(null),
+    needsGroups ? getSwitchSensorIds() : Promise.resolve(null)
   ])
+
+  const switchCoverage =
+    groups && switchSensorIds
+      ? computeSwitchCoverage(groups, switchSensorIds)
+      : null
 
   for (const schedule of relevant) {
     const group = groups?.find((g) => g.id === schedule.groupId)
@@ -202,11 +250,18 @@ const tick = async () => {
 
       if (schedule.enabled && schedule.slots.length) {
         const slot = schedule.slots.find((s) => inSlot(nowMin, s))
+
+        const prevSlotId = lastActiveSlot.get(schedule.groupId) ?? null
+        const currSlotId = slot?.id ?? null
+        const enteringSlot = currSlotId !== prevSlotId
+        lastActiveSlot.set(schedule.groupId, currSlotId)
+
         if (slot) {
           if (slot.sceneType === 'off') {
             await setGroupAction(schedule.groupId, { on: false })
-          } else if (group) {
-            await applySceneSlot(schedule.groupId, slot, group)
+          } else if (group && enteringSlot) {
+            const hasLinkedSwitch = switchCoverage?.get(schedule.groupId) ?? false
+            await applySceneSlot(schedule.groupId, slot, group, hasLinkedSwitch)
           }
         }
       }

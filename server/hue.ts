@@ -38,6 +38,7 @@ export interface Group {
   type: string
   class: string
   lights: string[]
+  sensors: string[]
   state: GroupState
   action: Record<string, unknown>
 }
@@ -227,4 +228,27 @@ export const getSensors = async (): Promise<Sensor[]> => {
   return Object.entries(json as Record<string, Omit<Sensor, 'id'>>)
     .filter(([, s]) => typeof s.state?.presence === 'boolean')
     .map(([id, s]) => ({ ...s, id }))
+}
+
+// Physical wall switches (Hue Dimmer, Hue Tap) that the official app has
+// paired to a room show up in that room's own `sensors` list (see Group).
+// Filtering the bridge's sensors down to actual button accessories lets
+// callers cross-reference a group's `sensors` array to tell "this room has a
+// switch a person can press" from "this room is only reachable via a
+// physical breaker" — no manual per-room config needed. Deliberately
+// excludes motion/presence sensor types (Hue's own, and third-party ones
+// like IKEA TRÅDFRI — see getSensors): a room with a motion sensor but no
+// switch listed here still has no way for a person to press "on", so it
+// must still be treated as breaker-only.
+const SWITCH_SENSOR_TYPES = new Set(['ZLLSwitch', 'ZGPSwitch'])
+
+export const getSwitchSensorIds = async (): Promise<Set<string>> => {
+  const res = await fetch(`${apiBase()}/sensors`)
+  const json = await res.json()
+  assertAuthOk(json)
+  return new Set(
+    Object.entries(json as Record<string, { type: string }>)
+      .filter(([, s]) => SWITCH_SENSOR_TYPES.has(s.type))
+      .map(([id]) => id)
+  )
 }
