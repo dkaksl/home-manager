@@ -55,6 +55,16 @@ cd client && npm run build
 
 This produces a static bundle in `client/dist/`, deployable to any static host. My own instance is hosted at **[home.kilumanga.com](https://home.kilumanga.com)**.
 
+### Deploying the backend
+
+The backend runs as a systemd service (`deploy/hue-manager.service`), set up via `deploy/provision.sh`. To upgrade a running deployment to the latest changes, on the device it's deployed to:
+
+```sh
+./deploy/update.sh
+```
+
+This pulls the latest code, reinstalls dependencies, and restarts the `hue-manager` service. Tail logs with `journalctl -u hue-manager -f`.
+
 ---
 
 ## Features
