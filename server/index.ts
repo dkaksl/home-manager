@@ -1,6 +1,7 @@
 import express, { type Response } from 'express'
 import cors from 'cors'
 import { config } from 'dotenv'
+import { execSync } from 'child_process'
 import {
   getEnrichedGroups,
   getLights,
@@ -19,6 +20,22 @@ config()
 
 const app = express()
 const PORT = parseInt(process.env.PORT || '3001', 10)
+
+// Printed at startup so `journalctl -u hue-manager` shows which deploy is
+// actually running — useful for correlating a regression's start time with
+// the commit that introduced it.
+const getVersion = (): string => {
+  try {
+    return execSync('git rev-parse --short HEAD', {
+      cwd: __dirname,
+      stdio: ['ignore', 'pipe', 'ignore']
+    })
+      .toString()
+      .trim()
+  } catch {
+    return 'unknown'
+  }
+}
 
 const hueError = (err: unknown, res: Response) => {
   const msg = err instanceof Error ? err.message : ''
@@ -139,6 +156,8 @@ app.put('/api/schedules/:groupId', (req, res) => {
 })
 
 app.listen(PORT, () => {
-  console.log(`Hue manager server running on http://localhost:${PORT}`)
+  console.log(
+    `Hue manager server running on http://localhost:${PORT} (commit ${getVersion()})`
+  )
   startScheduler()
 })
