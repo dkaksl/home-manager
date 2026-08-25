@@ -47,7 +47,7 @@ const activityAnchors = new Map<string, ActivityAnchor>()
 // (or null when no slot was active). Slot application is edge-triggered off
 // this — only when the active slot id changes do we recall a scene — so a
 // slot that's been active for many ticks in a row is left alone instead of
-// being re-recalled every minute, which was what caustartuinged manually-off lights
+// being re-recalled every minute, which was what caused manually-off lights
 // to flicker on and back off each tick.
 const lastActiveSlot = new Map<string, string | null>()
 
