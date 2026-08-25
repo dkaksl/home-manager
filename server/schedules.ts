@@ -47,7 +47,7 @@ const activityAnchors = new Map<string, ActivityAnchor>()
 // (or null when no slot was active). Slot application is edge-triggered off
 // this — only when the active slot id changes do we recall a scene — so a
 // slot that's been active for many ticks in a row is left alone instead of
-// being re-recalled every minute, which was what caused manually-off lights
+// being re-recalled every minute, which was what caustartuinged manually-off lights
 // to flicker on and back off each tick.
 const lastActiveSlot = new Map<string, string | null>()
 
@@ -209,7 +209,8 @@ const applyAutoOff = async (
 const tick = async () => {
   const data = load()
   const relevant = Object.values(data).filter(
-    (s) => s.killSwitch || s.autoOff?.enabled || (s.enabled && s.slots.length > 0)
+    (s) =>
+      s.killSwitch || s.autoOff?.enabled || (s.enabled && s.slots.length > 0)
   )
   if (!relevant.length) return
 
@@ -219,7 +220,9 @@ const tick = async () => {
   const needsGroups = relevant.some(
     (s) => s.killSwitch || s.autoOff?.enabled || s.enabled
   )
-  const needsSensors = relevant.some((s) => s.autoOff?.enabled && s.autoOff.sensorId)
+  const needsSensors = relevant.some(
+    (s) => s.autoOff?.enabled && s.autoOff.sensorId
+  )
 
   const [groups, sensors, switchSensorIds] = await Promise.all([
     needsGroups ? getEnrichedGroups() : Promise.resolve(null),
@@ -244,7 +247,12 @@ const tick = async () => {
       }
 
       if (schedule.autoOff?.enabled && group) {
-        const turnedOff = await applyAutoOff(schedule, group, sensors, now.getTime())
+        const turnedOff = await applyAutoOff(
+          schedule,
+          group,
+          sensors,
+          now.getTime()
+        )
         if (turnedOff) continue
       }
 
@@ -260,7 +268,8 @@ const tick = async () => {
           if (slot.sceneType === 'off') {
             await setGroupAction(schedule.groupId, { on: false })
           } else if (group && enteringSlot) {
-            const hasLinkedSwitch = switchCoverage?.get(schedule.groupId) ?? false
+            const hasLinkedSwitch =
+              switchCoverage?.get(schedule.groupId) ?? false
             await applySceneSlot(schedule.groupId, slot, group, hasLinkedSwitch)
           }
         }

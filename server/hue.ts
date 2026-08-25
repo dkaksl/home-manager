@@ -6,6 +6,13 @@ config()
 const HUE_IP = process.env.HUE_IP || '192.168.1.182'
 const HUE_USER = process.env.HUE_USER?.trim() ?? ''
 
+// Guards against a stalled bridge response wedging the scheduler tick
+// forever: a fetch with no timeout that never resolves or rejects will
+// pile up queued requests behind it on undici's shared connection pool,
+// silently blocking every future tick too.
+const FETCH_TIMEOUT_MS = 10_000
+const withTimeout = () => AbortSignal.timeout(FETCH_TIMEOUT_MS)
+
 export interface LightState {
   on: boolean
   bri?: number
@@ -67,7 +74,7 @@ const assertAuthOk = (json: unknown) => {
 }
 
 export const getLights = async (): Promise<Record<string, Light>> => {
-  const res = await fetch(`${apiBase()}/lights`)
+  const res = await fetch(`${apiBase()}/lights`, { signal: withTimeout() })
   const json = await res.json()
   assertAuthOk(json)
   return Object.fromEntries(
@@ -78,7 +85,7 @@ export const getLights = async (): Promise<Record<string, Light>> => {
 }
 
 export const getGroups = async (): Promise<Record<string, Group>> => {
-  const res = await fetch(`${apiBase()}/groups`)
+  const res = await fetch(`${apiBase()}/groups`, { signal: withTimeout() })
   const json = await res.json()
   assertAuthOk(json)
   return Object.fromEntries(
@@ -103,7 +110,8 @@ export const setLightState = async (
   const res = await fetch(`${apiBase()}/lights/${lightId}/state`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(state)
+    body: JSON.stringify(state),
+    signal: withTimeout()
   })
   return res.json()
 }
@@ -122,13 +130,14 @@ export const setGroupAction = async (
   const res = await fetch(`${apiBase()}/groups/${groupId}/action`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(action)
+    body: JSON.stringify(action),
+    signal: withTimeout()
   })
   return res.json()
 }
 
 export const getScenes = async (): Promise<Scene[]> => {
-  const res = await fetch(`${apiBase()}/scenes`)
+  const res = await fetch(`${apiBase()}/scenes`, { signal: withTimeout() })
   const json = (await res.json()) as Record<
     string,
     { name: string; group?: string; type: string }
@@ -150,7 +159,8 @@ const getV2ToV1GroupMap = async (): Promise<Record<string, string>> => {
   const [v2Res, v1Groups] = await Promise.all([
     fetch(`${v2Base()}/room`, {
       headers: v2Headers(),
-      dispatcher: v2Agent
+      dispatcher: v2Agent,
+      signal: withTimeout()
     } as Parameters<typeof fetch>[1]),
     getGroups()
   ])
@@ -169,7 +179,8 @@ export const getSmartScenes = async (): Promise<Scene[]> => {
   const [res, v2ToV1] = await Promise.all([
     fetch(`${v2Base()}/smart_scene`, {
       headers: v2Headers(),
-      dispatcher: v2Agent
+      dispatcher: v2Agent,
+      signal: withTimeout()
     } as Parameters<typeof fetch>[1]),
     getV2ToV1GroupMap()
   ])
@@ -195,7 +206,8 @@ export const activateSmartScene = async (smartSceneId: string) => {
     method: 'PUT',
     headers: { ...v2Headers(), 'Content-Type': 'application/json' },
     dispatcher: v2Agent,
-    body: JSON.stringify({ recall: { action: 'activate' } })
+    body: JSON.stringify({ recall: { action: 'activate' } }),
+    signal: withTimeout()
   } as Parameters<typeof fetch>[1])
   return res.json()
 }
@@ -204,7 +216,8 @@ export const activateScene = async (groupId: string, sceneId: string) => {
   const res = await fetch(`${apiBase()}/groups/${groupId}/action`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ scene: sceneId })
+    body: JSON.stringify({ scene: sceneId }),
+    signal: withTimeout()
   })
   return res.json()
 }
@@ -222,7 +235,7 @@ export interface Sensor {
 // TRÅDFRI) presence sensors paired directly to the bridge — both expose a
 // boolean `state.presence`, which is what we filter on.
 export const getSensors = async (): Promise<Sensor[]> => {
-  const res = await fetch(`${apiBase()}/sensors`)
+  const res = await fetch(`${apiBase()}/sensors`, { signal: withTimeout() })
   const json = await res.json()
   assertAuthOk(json)
   return Object.entries(json as Record<string, Omit<Sensor, 'id'>>)
@@ -243,7 +256,7 @@ export const getSensors = async (): Promise<Sensor[]> => {
 const SWITCH_SENSOR_TYPES = new Set(['ZLLSwitch', 'ZGPSwitch'])
 
 export const getSwitchSensorIds = async (): Promise<Set<string>> => {
-  const res = await fetch(`${apiBase()}/sensors`)
+  const res = await fetch(`${apiBase()}/sensors`, { signal: withTimeout() })
   const json = await res.json()
   assertAuthOk(json)
   return new Set(
