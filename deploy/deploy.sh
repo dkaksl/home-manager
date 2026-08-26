@@ -61,6 +61,10 @@ sudo systemctl daemon-reload
 sudo systemctl enable "$SERVICE_NAME"
 sudo systemctl enable --now "${SERVICE_NAME}-watchdog.timer"
 
+# Follow-up commands worth having on hand right after a deploy.
+STATUS_CMD="systemctl status $SERVICE_NAME ${SERVICE_NAME}-watchdog.timer"
+LOGS_CMD="journalctl -u $SERVICE_NAME -u ${SERVICE_NAME}-watchdog.service -f"
+
 if [[ -f "$APP_DIR/.env" ]]; then
   echo "==> Restarting $SERVICE_NAME"
   sudo systemctl restart "$SERVICE_NAME"
@@ -68,8 +72,8 @@ if [[ -f "$APP_DIR/.env" ]]; then
 
 ==> Done. $SERVICE_NAME is running the latest code.
 
-    Check status with: systemctl status $SERVICE_NAME
-    Follow logs with:  journalctl -u $SERVICE_NAME -f
+    Check status with: $STATUS_CMD
+    Follow logs with:  $LOGS_CMD
 EOF
 else
   cat <<EOF
