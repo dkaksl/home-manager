@@ -12,6 +12,14 @@ import {
 
 const SCHEDULES_FILE = path.join(process.cwd(), 'data', 'schedules.json')
 
+// Written on every tick attempt so an external watchdog (deploy/watchdog.sh,
+// run via systemd timer, independent of this process's own event loop) can
+// detect the one failure mode this process can never notice on its own: the
+// timer that's supposed to call tick() every 60s silently stops firing.
+// Nothing inside the process runs in that case, so nothing inside the
+// process can catch it either.
+const HEARTBEAT_FILE = path.join(process.cwd(), 'data', 'scheduler-heartbeat')
+
 export interface TimeSlot {
   id: string
   startTime: string // "HH:MM"
@@ -301,6 +309,12 @@ const runTick = async () => {
   } catch (err) {
     console.error('[scheduler] tick failed:', err)
   } finally {
+    try {
+      mkdirSync(path.dirname(HEARTBEAT_FILE), { recursive: true })
+      writeFileSync(HEARTBEAT_FILE, new Date().toISOString())
+    } catch (err) {
+      console.error('[scheduler] failed to write heartbeat:', err)
+    }
     setTimeout(runTick, 60_000)
   }
 }

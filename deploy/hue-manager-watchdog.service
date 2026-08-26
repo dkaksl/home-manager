@@ -1,0 +1,7 @@
+[Unit]
+Description=Hue Manager scheduler watchdog
+After=hue-manager.service
+
+[Service]
+Type=oneshot
+ExecStart=__HOME__/home-manager/deploy/watchdog.sh

@@ -9,7 +9,12 @@
 #
 # It installs Node.js, clones the repo, and registers the backend as a
 # systemd service (enabled, but not started -- the .env file still needs to
-# be copied over first, see the final message).
+# be copied over first, see the final message) along with a watchdog timer
+# that restarts it if the scheduler's heartbeat goes stale.
+#
+# Safe to re-run on an already-provisioned Pi -- e.g. to pick up the watchdog
+# timer on a install that predates it. It won't touch an existing .env or
+# restart a running service.
 
 set -euo pipefail
 
@@ -43,8 +48,15 @@ sed \
   -e "s|__NPM__|$(command -v npm)|g" \
   "$APP_DIR/deploy/hue-manager.service" | sudo tee "/etc/systemd/system/${SERVICE_NAME}.service" >/dev/null
 
+echo "==> Installing scheduler watchdog"
+sed \
+  -e "s|__HOME__|$HOME|g" \
+  "$APP_DIR/deploy/hue-manager-watchdog.service" | sudo tee "/etc/systemd/system/${SERVICE_NAME}-watchdog.service" >/dev/null
+sudo cp "$APP_DIR/deploy/hue-manager-watchdog.timer" "/etc/systemd/system/${SERVICE_NAME}-watchdog.timer"
+
 sudo systemctl daemon-reload
 sudo systemctl enable "$SERVICE_NAME"
+sudo systemctl enable --now "${SERVICE_NAME}-watchdog.timer"
 
 cat <<EOF
 
@@ -55,6 +67,9 @@ cat <<EOF
 
     Check status with: systemctl status $SERVICE_NAME
     Follow logs with:  journalctl -u $SERVICE_NAME -f
+
+    Watchdog timer (restarts $SERVICE_NAME if the scheduler heartbeat goes
+    stale) is enabled and running: systemctl status ${SERVICE_NAME}-watchdog.timer
 
     To upgrade later, run: $APP_DIR/deploy/update.sh
 EOF

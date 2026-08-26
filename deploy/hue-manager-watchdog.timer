@@ -1,0 +1,10 @@
+[Unit]
+Description=Periodic check of the Hue Manager scheduler heartbeat
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=2min
+Unit=hue-manager-watchdog.service
+
+[Install]
+WantedBy=timers.target
