@@ -207,14 +207,18 @@ const applyAutoOff = async (
 }
 
 const tick = async () => {
+  const tickStart = new Date()
   const data = load()
   const relevant = Object.values(data).filter(
     (s) =>
       s.killSwitch || s.autoOff?.enabled || (s.enabled && s.slots.length > 0)
   )
-  if (!relevant.length) return
+  if (!relevant.length) {
+    console.log(`[scheduler] tick @ ${tickStart.toISOString()}: nothing to do`)
+    return
+  }
 
-  const now = new Date()
+  const now = tickStart
   const nowMin = now.getHours() * 60 + now.getMinutes()
 
   const needsGroups = relevant.some(
@@ -278,6 +282,27 @@ const tick = async () => {
       console.error(`[scheduler] group ${schedule.groupId}:`, err)
     }
   }
+
+  console.log(
+    `[scheduler] tick @ ${tickStart.toISOString()}: processed ${relevant.length} schedule(s)`
+  )
+}
+
+// Self-rescheduling setTimeout rather than setInterval: the next tick is
+// only armed once the current one has fully settled (success or failure),
+// via a fresh timer each time. That way one bad tick can never silently
+// take the whole loop down with it — setInterval's single long-lived timer
+// did exactly that in production (ticks stopped firing for days with zero
+// error output, root cause never pinned down), whereas this can only stop
+// if a tick throws synchronously, which the try/catch below also rules out.
+const runTick = async () => {
+  try {
+    await tick()
+  } catch (err) {
+    console.error('[scheduler] tick failed:', err)
+  } finally {
+    setTimeout(runTick, 60_000)
+  }
 }
 
 export const startScheduler = () => {
@@ -285,10 +310,7 @@ export const startScheduler = () => {
   const msToNextMinute =
     (60 - new Date().getSeconds()) * 1000 - new Date().getMilliseconds()
 
-  setTimeout(() => {
-    tick()
-    setInterval(tick, 60_000)
-  }, msToNextMinute)
+  setTimeout(runTick, msToNextMinute)
 
   console.log(
     `[scheduler] starting, first tick in ${Math.round(msToNextMinute / 1000)}s`
