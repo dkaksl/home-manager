@@ -1,20 +1,25 @@
 #!/usr/bin/env bash
 #
-# First-boot setup for the Hue Manager backend on a Raspberry Pi.
+# Idempotent setup/upgrade script for the Hue Manager backend. Safe to run
+# on a fresh Raspberry Pi (first-boot) or repeatedly on an existing install
+# to pick up code or config changes -- same command either way.
 #
-# Flash the OS with SSH and your public key already configured (Raspberry Pi
-# Imager -> advanced options), boot the Pi, then run this script over SSH:
+# Fresh Pi, over SSH (flash the OS with SSH and your public key already
+# configured -- Raspberry Pi Imager -> advanced options -- then boot it):
 #
-#   ssh <user>@<host> 'bash -s' < deploy/provision.sh
+#   ssh <user>@<host> 'bash -s' < deploy/deploy.sh
 #
-# It installs Node.js, clones the repo, and registers the backend as a
-# systemd service (enabled, but not started -- the .env file still needs to
-# be copied over first, see the final message) along with a watchdog timer
-# that restarts it if the scheduler's heartbeat goes stale.
+# Existing install, from a clone on the device itself:
 #
-# Safe to re-run on an already-provisioned Pi -- e.g. to pick up the watchdog
-# timer on a install that predates it. It won't touch an existing .env or
-# restart a running service.
+#   ./deploy/deploy.sh
+#
+# It installs Node.js if needed, pulls the repo, installs dependencies,
+# (re)installs the systemd service and watchdog timer, and restarts them.
+#
+# On a genuinely fresh install there's no .env yet, so the service is left
+# stopped -- copy one over and re-run (or just start it yourself):
+#
+#   scp .env <user>@<host>:~/home-manager/.env
 
 set -euo pipefail
 
@@ -41,14 +46,12 @@ echo "==> Installing dependencies"
 cd "$APP_DIR"
 npm install
 
-echo "==> Installing systemd service"
+echo "==> Installing systemd units"
 sed \
   -e "s|__USER__|$USER|g" \
   -e "s|__HOME__|$HOME|g" \
   -e "s|__NPM__|$(command -v npm)|g" \
   "$APP_DIR/deploy/hue-manager.service" | sudo tee "/etc/systemd/system/${SERVICE_NAME}.service" >/dev/null
-
-echo "==> Installing scheduler watchdog"
 sed \
   -e "s|__HOME__|$HOME|g" \
   "$APP_DIR/deploy/hue-manager-watchdog.service" | sudo tee "/etc/systemd/system/${SERVICE_NAME}-watchdog.service" >/dev/null
@@ -58,18 +61,23 @@ sudo systemctl daemon-reload
 sudo systemctl enable "$SERVICE_NAME"
 sudo systemctl enable --now "${SERVICE_NAME}-watchdog.timer"
 
-cat <<EOF
+if [[ -f "$APP_DIR/.env" ]]; then
+  echo "==> Restarting $SERVICE_NAME"
+  sudo systemctl restart "$SERVICE_NAME"
+  cat <<EOF
 
-==> Done. Before starting the service, copy your .env file over:
-
-      scp .env $USER@<host>:$APP_DIR/.env
-      ssh $USER@<host> 'sudo systemctl start $SERVICE_NAME'
+==> Done. $SERVICE_NAME is running the latest code.
 
     Check status with: systemctl status $SERVICE_NAME
     Follow logs with:  journalctl -u $SERVICE_NAME -f
-
-    Watchdog timer (restarts $SERVICE_NAME if the scheduler heartbeat goes
-    stale) is enabled and running: systemctl status ${SERVICE_NAME}-watchdog.timer
-
-    To upgrade later, run: $APP_DIR/deploy/update.sh
 EOF
+else
+  cat <<EOF
+
+==> Done, but $APP_DIR/.env is missing -- $SERVICE_NAME was NOT started.
+
+    Copy it over, then re-run this script (or just: sudo systemctl start $SERVICE_NAME)
+
+      scp .env $USER@<host>:$APP_DIR/.env
+EOF
+fi

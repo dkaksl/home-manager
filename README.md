@@ -57,13 +57,14 @@ This produces a static bundle in `client/dist/`, deployable to any static host. 
 
 ### Deploying the backend
 
-The backend runs as a systemd service (`deploy/hue-manager.service`), set up via `deploy/provision.sh`. To upgrade a running deployment to the latest changes, on the device it's deployed to:
+The backend runs as a systemd service (`deploy/hue-manager.service`) plus a watchdog timer that restarts it if the scheduler's heartbeat goes stale (`deploy/hue-manager-watchdog.service`/`.timer`). One idempotent script handles both first-time setup and every upgrade after that:
 
 ```sh
-./deploy/update.sh
+ssh <user>@<host> 'bash -s' < deploy/deploy.sh   # fresh Pi, over SSH
+./deploy/deploy.sh                               # existing install, on the device
 ```
 
-This pulls the latest code, reinstalls dependencies, and restarts the `hue-manager` service. Tail logs with `journalctl -u hue-manager -f`.
+It installs Node.js if needed, pulls the latest code, reinstalls dependencies, (re)installs the systemd units, and restarts `hue-manager` (skipped on a fresh install until `.env` is copied over — the script tells you). Tail logs with `journalctl -u hue-manager -f`.
 
 ---
 
