@@ -40,7 +40,7 @@ See [Incident 6](#incident-6-2026-08-27--edge-trigger-latches-before-the-scene-i
 | 08-26 ~15:49–15:59 | — | **Incident 3** — debugger attached to the live process freezes the event loop |
 | 08-26 15:58 | `5d72937` | **Incident 3** fix (part 1) — `setInterval` → self-rescheduling `setTimeout` + try/catch per tick |
 | 08-26 16:08 | `ad1cba0` | **Incident 3** fix (part 2) — heartbeat file + independent systemd watchdog timer |
-| 08-27 | *(local, undeployed)* | **Incident 6** — fixed edge-trigger latch bug from `983cf9f` |
+| 08-27 | `a7e6c60` *(committed, not pushed/deployed)* | **Incident 6** — fixed edge-trigger latch bug from `983cf9f` |
 
 ## Incident 1 — 2026-08-18 23:37: uncaught fetch error kills the process
 
@@ -173,11 +173,15 @@ Confirmed by manually replaying the exact bridge call the scheduler makes
 scheduler didn't fight or revert it over the following ticks, proving the in-memory latch
 was the thing stuck, not the bridge, scene config, or network path.
 
-Fix (local, not yet deployed to the Pi): `lastActiveSlot` is now only latched once the
-slot has actually been acted on — scene applied, off applied, or steady-state with a
-resolved `group`. If `group` is missing that tick, the latch is left alone so the next
-tick still sees `enteringSlot === true` and retries, instead of silently giving up for
-the rest of the slot ([server/schedules.ts:271-297](../server/schedules.ts#L271-L297)).
+Fix: `a7e6c60` ("fix: stuck scenes in scheduling") — `lastActiveSlot` is now only latched
+once the slot has actually been acted on — scene applied, off applied, or steady-state
+with a resolved `group`. If `group` is missing that tick, the latch is left alone so the
+next tick still sees `enteringSlot === true` and retries, instead of silently giving up
+for the rest of the slot ([server/schedules.ts:271-297](../server/schedules.ts#L271-L297)).
+
+**Not yet deployed** — see [TL;DR](#tldr--current-state-2026-08-27-verified-over-ssh):
+the commit exists locally but hasn't been pushed to `origin`, so the Pi is still running
+`453c6f6`, two commits behind.
 
 ## Recommendations / open items
 
