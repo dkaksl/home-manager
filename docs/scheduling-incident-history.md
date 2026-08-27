@@ -8,24 +8,25 @@ boot since 2026-08-15).
 
 ## TL;DR — current state (2026-08-27, verified over SSH)
 
-The scheduler is healthy and ticking normally. Five fixes have landed since launch, each
-closing off one way a tick could silently die or misbehave. A sixth bug let a room get
-stuck on the wrong scene for hours with zero error output; the fix for it
-(`a7e6c60`, "fix: stuck scenes in scheduling") is committed but **not yet deployed** —
-it hasn't been pushed to `origin` yet, so the Pi's `deploy.sh` (which does a plain
-`git pull`) can't see it. Verified on the Pi:
+The scheduler is healthy and ticking normally, and **all six fixes are now deployed**,
+including the Incident 6 fix (`a7e6c60`, "fix: stuck scenes in scheduling"), which was
+pushed to `origin` and redeployed after initially shipping local-only. Verified on the
+Pi post-redeploy:
 
 ```
 $ git -C ~/home-manager log -1 --format="%H %s"
-453c6f6b1ad2519c10015cb0e58d3a1267539e59 feat: log some useful commands on deploy
+08723413ee567ab9031d05c5c90d5e18410941e7 chore: updated docs   # descendant of a7e6c60
+$ grep -n "leave the slot unlatched" ~/home-manager/server/schedules.ts
+289:            // fetch miss) -- leave the slot unlatched so the next tick still
+$ systemctl show hue-manager -p ActiveState -p SubState -p ExecMainStartTimestamp
+ActiveState=active
+SubState=running
+ExecMainStartTimestamp=Thu 2026-08-27 10:13:40 CEST
 ```
 
-`453c6f6` is two commits behind `a7e6c60` on `main` — it predates the fix, it's not a
-stale checkout. `git log --oneline origin/main` confirms `origin` itself only has up to
-`453c6f6`; `a7e6c60` and the doc commit exist locally but were never pushed. The service
-was in fact redeployed and restarted today at 10:11:59 CEST (`ExecMainStartTimestamp`),
-so the deploy mechanism itself worked correctly — it just deployed the newest commit
-that existed on the remote at the time, which doesn't include the fix.
+Startup log confirms the running process is on the new code
+(`Hue manager server running on http://localhost:3001 (commit 0872341)`), and the
+heartbeat file was 1s old at check time — the scheduler is ticking on the fixed code.
 See [Incident 6](#incident-6-2026-08-27--edge-trigger-latches-before-the-scene-is-actually-applied).
 
 ## Timeline
@@ -40,7 +41,7 @@ See [Incident 6](#incident-6-2026-08-27--edge-trigger-latches-before-the-scene-i
 | 08-26 ~15:49–15:59 | — | **Incident 3** — debugger attached to the live process freezes the event loop |
 | 08-26 15:58 | `5d72937` | **Incident 3** fix (part 1) — `setInterval` → self-rescheduling `setTimeout` + try/catch per tick |
 | 08-26 16:08 | `ad1cba0` | **Incident 3** fix (part 2) — heartbeat file + independent systemd watchdog timer |
-| 08-27 | `a7e6c60` *(committed, not pushed/deployed)* | **Incident 6** — fixed edge-trigger latch bug from `983cf9f` |
+| 08-27 | `a7e6c60` *(deployed as of 10:13:40)* | **Incident 6** — fixed edge-trigger latch bug from `983cf9f` |
 
 ## Incident 1 — 2026-08-18 23:37: uncaught fetch error kills the process
 
@@ -179,15 +180,12 @@ with a resolved `group`. If `group` is missing that tick, the latch is left alon
 next tick still sees `enteringSlot === true` and retries, instead of silently giving up
 for the rest of the slot ([server/schedules.ts:271-297](../server/schedules.ts#L271-L297)).
 
-**Not yet deployed** — see [TL;DR](#tldr--current-state-2026-08-27-verified-over-ssh):
-the commit exists locally but hasn't been pushed to `origin`, so the Pi is still running
-`453c6f6`, two commits behind.
+**Deployed** — see [TL;DR](#tldr--current-state-2026-08-27-verified-over-ssh): pushed to
+`origin` and redeployed; the Pi is now running `0872341`, a descendant of `a7e6c60`, and
+the fix's code is confirmed present in the file on disk.
 
 ## Recommendations / open items
 
-- **Deploy the Incident 6 fix.** It's local-only as of this doc; Trapporna was fixed for
-  today by manually re-pushing the scene via the bridge API, but the underlying bug is
-  still live on the Pi until redeployed.
 - **Every deploy-triggered restart in the journal required a `SIGKILL`**, not a graceful
   stop (`Killing process N (V8Worker/SignalInspector/DelayedTaskSche)` appears on every
   single restart since 08-16). Not scheduling-specific, but worth a separate look —
