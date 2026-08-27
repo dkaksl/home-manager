@@ -6,12 +6,27 @@ rather than the same bug recurring — this doc lays out what actually happened,
 based on git history and the `hue-manager` systemd journal on the Pi (`$RPI_IP`, single
 boot since 2026-08-15).
 
-## TL;DR — current state (2026-08-27)
+## TL;DR — current state (2026-08-27, verified over SSH)
 
 The scheduler is healthy and ticking normally. Five fixes have landed since launch, each
-closing off one way a tick could silently die or misbehave. A sixth bug — found today,
-**not yet deployed** — let a room get stuck on the wrong scene for hours with zero error
-output. See [Incident 6](#incident-6-2026-08-27--edge-trigger-latches-before-the-scene-is-actually-applied).
+closing off one way a tick could silently die or misbehave. A sixth bug let a room get
+stuck on the wrong scene for hours with zero error output; the fix for it
+(`a7e6c60`, "fix: stuck scenes in scheduling") is committed but **not yet deployed** —
+it hasn't been pushed to `origin` yet, so the Pi's `deploy.sh` (which does a plain
+`git pull`) can't see it. Verified on the Pi:
+
+```
+$ git -C ~/home-manager log -1 --format="%H %s"
+453c6f6b1ad2519c10015cb0e58d3a1267539e59 feat: log some useful commands on deploy
+```
+
+`453c6f6` is two commits behind `a7e6c60` on `main` — it predates the fix, it's not a
+stale checkout. `git log --oneline origin/main` confirms `origin` itself only has up to
+`453c6f6`; `a7e6c60` and the doc commit exist locally but were never pushed. The service
+was in fact redeployed and restarted today at 10:11:59 CEST (`ExecMainStartTimestamp`),
+so the deploy mechanism itself worked correctly — it just deployed the newest commit
+that existed on the remote at the time, which doesn't include the fix.
+See [Incident 6](#incident-6-2026-08-27--edge-trigger-latches-before-the-scene-is-actually-applied).
 
 ## Timeline
 
