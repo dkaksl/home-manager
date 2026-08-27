@@ -274,16 +274,26 @@ const tick = async () => {
         const prevSlotId = lastActiveSlot.get(schedule.groupId) ?? null
         const currSlotId = slot?.id ?? null
         const enteringSlot = currSlotId !== prevSlotId
-        lastActiveSlot.set(schedule.groupId, currSlotId)
 
         if (slot) {
           if (slot.sceneType === 'off') {
             await setGroupAction(schedule.groupId, { on: false })
+            lastActiveSlot.set(schedule.groupId, currSlotId)
           } else if (group && enteringSlot) {
             const hasLinkedSwitch =
               switchCoverage?.get(schedule.groupId) ?? false
             await applySceneSlot(schedule.groupId, slot, group, hasLinkedSwitch)
+            lastActiveSlot.set(schedule.groupId, currSlotId)
+          } else if (!group) {
+            // Couldn't resolve the group this tick (e.g. a transient bridge
+            // fetch miss) -- leave the slot unlatched so the next tick still
+            // sees enteringSlot=true and retries the scene application,
+            // instead of silently skipping it for the rest of the slot.
+          } else {
+            lastActiveSlot.set(schedule.groupId, currSlotId)
           }
+        } else {
+          lastActiveSlot.set(schedule.groupId, currSlotId)
         }
       }
     } catch (err) {
