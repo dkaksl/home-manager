@@ -4,7 +4,8 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "node --require ts-node/register --test server/**/*.test.ts",
+    "prepare": "git config core.hooksPath .githooks",
     "create-user": "ts-node bin/create-user.ts",
     "server": "ts-node server/index.ts",
     "client": "npm run dev --prefix client",
