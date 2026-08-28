@@ -7,7 +7,10 @@ import {
   setGroupAction,
   setLightState,
   activateScene,
-  activateSmartScene
+  activateSmartScene,
+  getSceneLightstates,
+  EnrichedGroup,
+  SceneLightState
 } from './hue'
 
 const SCHEDULES_FILE = path.join(process.cwd(), 'data', 'schedules.json')
@@ -51,13 +54,53 @@ interface ActivityAnchor {
 }
 const activityAnchors = new Map<string, ActivityAnchor>()
 
-// Tracks, per room, the id of the slot that was active on the previous tick
-// (or null when no slot was active). Slot application is edge-triggered off
-// this — only when the active slot id changes do we recall a scene — so a
-// slot that's been active for many ticks in a row is left alone instead of
-// being re-recalled every minute, which was what caused manually-off lights
-// to flicker on and back off each tick.
+// Tracks, per room, the id of the slot active on the previous tick, so
+// processSchedule can tell "just crossed into this slot" from "been here a
+// while" (see schedules.test.ts for the entering/steady-state/retry
+// scenarios this drives). Smart scenes are only ever touched on entry —
+// re-activating one mid-slot would restart its dynamic cycling on the Hue
+// bridge, not just resend the same state.
 const lastActiveSlot = new Map<string, string | null>()
+
+// Per-scene target lightstates, fetched once and reused — scenes rarely
+// change, and re-verifying drift every tick shouldn't cost an extra bridge
+// round trip per schedule every time.
+const sceneLightstateCache = new Map<string, Record<string, SceneLightState>>()
+
+const getCachedSceneLightstates = async (
+  sceneId: string
+): Promise<Record<string, SceneLightState>> => {
+  const cached = sceneLightstateCache.get(sceneId)
+  if (cached) return cached
+  const lightstates = await getSceneLightstates(sceneId)
+  sceneLightstateCache.set(sceneId, lightstates)
+  return lightstates
+}
+
+// `ct` is compared with a 1-mired tolerance since the bridge rounds it on
+// readback (exact equality would flag drift that isn't real).
+const sceneStateMatches = (
+  group: EnrichedGroup,
+  lightstates: Record<string, SceneLightState>,
+  respectManualOff: boolean
+): boolean =>
+  Object.entries(lightstates).every(([lightId, target]) => {
+    const light = group.lightDetails.find((l) => l.id === lightId)
+    if (!light) return true // can't verify a light we don't see this tick
+    if (!light.state.on) return respectManualOff
+    if (!target.on) return false
+    if (
+      target.bri !== undefined &&
+      Math.abs((light.state.bri ?? 0) - target.bri) > 1
+    )
+      return false
+    if (
+      target.ct !== undefined &&
+      Math.abs((light.state.ct ?? 0) - target.ct) > 1
+    )
+      return false
+    return true
+  })
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -123,13 +166,11 @@ const inSlot = (nowMin: number, slot: TimeSlot): boolean => {
   return s <= e ? nowMin >= s && nowMin < e : nowMin >= s || nowMin < e
 }
 
-// Applies a scene slot, then restores pre-scene off-state to any light that
-// was off beforehand — a group scene recall otherwise turns every light in
-// the room back on, including ones the user just switched off by hand.
 // `respectManualOff` is false for rooms with no linked wall switch (see
 // `getSwitchSensorIds`), since a breaker-only room's "off" bridge state can't
 // be trusted as a deliberate override — there's no switch to press, and
 // flipping the breaker back on doesn't restore the bridge's own on-flag.
+// See schedules.test.ts for the room-level and light-level cases.
 const applySceneSlot = async (
   groupId: string,
   slot: TimeSlot,
@@ -214,6 +255,60 @@ const applyAutoOff = async (
   return turnedOff
 }
 
+export const processSchedule = async (
+  schedule: RoomSchedule,
+  group: EnrichedGroup | undefined,
+  sensors: Awaited<ReturnType<typeof getSensors>> | null,
+  switchCoverage: Map<string, boolean> | null,
+  now: Date
+): Promise<void> => {
+  if (schedule.killSwitch) {
+    if (group?.state.any_on) {
+      await setGroupAction(schedule.groupId, { on: false })
+    }
+    return
+  }
+
+  if (schedule.autoOff?.enabled && group) {
+    const turnedOff = await applyAutoOff(schedule, group, sensors, now.getTime())
+    if (turnedOff) return
+  }
+
+  if (schedule.enabled && schedule.slots.length) {
+    const nowMin = now.getHours() * 60 + now.getMinutes()
+    const slot = schedule.slots.find((s) => inSlot(nowMin, s))
+
+    const prevSlotId = lastActiveSlot.get(schedule.groupId) ?? null
+    const currSlotId = slot?.id ?? null
+    const enteringSlot = currSlotId !== prevSlotId
+
+    if (slot) {
+      if (slot.sceneType === 'off') {
+        await setGroupAction(schedule.groupId, { on: false })
+        lastActiveSlot.set(schedule.groupId, currSlotId)
+      } else if (!group) {
+        // Left unlatched deliberately (see schedules.test.ts, "retries after
+        // a group lookup miss") -- do not set lastActiveSlot here.
+      } else {
+        const hasLinkedSwitch = switchCoverage?.get(schedule.groupId) ?? false
+
+        let needsApply = enteringSlot
+        if (!needsApply && slot.sceneType === 'static') {
+          const lightstates = await getCachedSceneLightstates(slot.sceneId)
+          needsApply = !sceneStateMatches(group, lightstates, hasLinkedSwitch)
+        }
+
+        if (needsApply) {
+          await applySceneSlot(schedule.groupId, slot, group, hasLinkedSwitch)
+        }
+        lastActiveSlot.set(schedule.groupId, currSlotId)
+      }
+    } else {
+      lastActiveSlot.set(schedule.groupId, currSlotId)
+    }
+  }
+}
+
 const tick = async () => {
   const tickStart = new Date()
   const data = load()
@@ -227,7 +322,6 @@ const tick = async () => {
   }
 
   const now = tickStart
-  const nowMin = now.getHours() * 60 + now.getMinutes()
 
   const needsGroups = relevant.some(
     (s) => s.killSwitch || s.autoOff?.enabled || s.enabled
@@ -251,51 +345,7 @@ const tick = async () => {
     const group = groups?.find((g) => g.id === schedule.groupId)
 
     try {
-      if (schedule.killSwitch) {
-        if (group?.state.any_on) {
-          await setGroupAction(schedule.groupId, { on: false })
-        }
-        continue
-      }
-
-      if (schedule.autoOff?.enabled && group) {
-        const turnedOff = await applyAutoOff(
-          schedule,
-          group,
-          sensors,
-          now.getTime()
-        )
-        if (turnedOff) continue
-      }
-
-      if (schedule.enabled && schedule.slots.length) {
-        const slot = schedule.slots.find((s) => inSlot(nowMin, s))
-
-        const prevSlotId = lastActiveSlot.get(schedule.groupId) ?? null
-        const currSlotId = slot?.id ?? null
-        const enteringSlot = currSlotId !== prevSlotId
-
-        if (slot) {
-          if (slot.sceneType === 'off') {
-            await setGroupAction(schedule.groupId, { on: false })
-            lastActiveSlot.set(schedule.groupId, currSlotId)
-          } else if (group && enteringSlot) {
-            const hasLinkedSwitch =
-              switchCoverage?.get(schedule.groupId) ?? false
-            await applySceneSlot(schedule.groupId, slot, group, hasLinkedSwitch)
-            lastActiveSlot.set(schedule.groupId, currSlotId)
-          } else if (!group) {
-            // Couldn't resolve the group this tick (e.g. a transient bridge
-            // fetch miss) -- leave the slot unlatched so the next tick still
-            // sees enteringSlot=true and retries the scene application,
-            // instead of silently skipping it for the rest of the slot.
-          } else {
-            lastActiveSlot.set(schedule.groupId, currSlotId)
-          }
-        } else {
-          lastActiveSlot.set(schedule.groupId, currSlotId)
-        }
-      }
+      await processSchedule(schedule, group, sensors, switchCoverage, now)
     } catch (err) {
       console.error(`[scheduler] group ${schedule.groupId}:`, err)
     }

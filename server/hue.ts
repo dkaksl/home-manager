@@ -154,6 +154,27 @@ export const getScenes = async (): Promise<Scene[]> => {
     )
 }
 
+export interface SceneLightState {
+  on: boolean
+  bri?: number
+  ct?: number
+}
+
+// The bulk /scenes list omits per-light targets -- only the single-scene GET
+// includes `lightstates` -- so verifying a room's current state against its
+// scheduled scene needs this per-id fetch.
+export const getSceneLightstates = async (
+  sceneId: string
+): Promise<Record<string, SceneLightState>> => {
+  const res = await fetch(`${apiBase()}/scenes/${sceneId}`, {
+    signal: withTimeout()
+  })
+  const json = (await res.json()) as {
+    lightstates?: Record<string, SceneLightState>
+  }
+  return json.lightstates ?? {}
+}
+
 // Returns a map of v2 room UUID → v1 group ID, matched by room name
 const getV2ToV1GroupMap = async (): Promise<Record<string, string>> => {
   const [v2Res, v1Groups] = await Promise.all([
