@@ -54,13 +54,23 @@ interface ActivityAnchor {
 }
 const activityAnchors = new Map<string, ActivityAnchor>()
 
-// Tracks, per room, the id of the slot active on the previous tick, so
-// processSchedule can tell "just crossed into this slot" from "been here a
-// while" (see schedules.test.ts for the entering/steady-state/retry
-// scenarios this drives). Smart scenes are only ever touched on entry —
-// re-activating one mid-slot would restart its dynamic cycling on the Hue
-// bridge, not just resend the same state.
-const lastActiveSlot = new Map<string, string | null>()
+// Tracks, per room, the (type, sceneId) of the scene last applied, so
+// processSchedule can tell "just crossed into a different scene" from "been
+// here a while" (see schedules.test.ts for the entering/steady-state/retry
+// scenarios this drives). Keyed on the scene itself rather than the
+// `TimeSlot.id` it came from: two adjacent slots that happen to reference the
+// same scene (e.g. a room's evening and pre-dawn slots both set to
+// "Nightlight") must not look like an "entering" transition just because the
+// slot object changed underneath an unchanged scene — that forced a needless
+// scene recall right at the boundary, which flickered on any light a person
+// had manually turned off, exactly the class of bug the edit-triggered latch
+// (983cf9f) was meant to prevent. Smart scenes are only ever touched on
+// entry — re-activating one mid-slot would restart its dynamic cycling on
+// the Hue bridge, not just resend the same state.
+const lastAppliedScene = new Map<string, string | null>()
+
+const sceneKey = (slot: TimeSlot | undefined): string | null =>
+  slot ? `${slot.sceneType}:${slot.sceneId}` : null
 
 // Per-scene target lightstates, fetched once and reused — scenes rarely
 // change, and re-verifying drift every tick shouldn't cost an extra bridge
@@ -79,6 +89,29 @@ const getCachedSceneLightstates = async (
 
 // `ct` is compared with a 1-mired tolerance since the bridge rounds it on
 // readback (exact equality would flag drift that isn't real).
+//
+// A `ct` target is also clamped to the light's own reported range before
+// that comparison. A scene can store a `ct` past what a given bulb's
+// hardware actually supports (this happened for real: two IKEA TRÅDFRI
+// bulbs in "Nere" have a `ct` max of 454, but the "Nightlight" scene's
+// stored target for them is 500 -- see docs/scheduling-incident-history.md,
+// Incident 7). The bridge silently clamps that on recall and reports back
+// whatever the bulb actually settled at, which without clamping the target
+// here first would never satisfy the tolerance -- making this function
+// return false on *every* tick for as long as that scene is active, driving
+// a full scene re-recall every tick. That's invisible on its own (resending
+// a state a light is already at doesn't visibly change anything), but it
+// flickers any *other* light a person has manually turned off in the same
+// room, every tick, for as long as they leave it off -- the whole group's
+// scene gets re-recalled regardless of which light in it is the one that
+// won't settle.
+//
+// Every remaining mismatch (a light that isn't hardware-limited, but is
+// still off-target) is logged, so a real drift is distinguishable from this
+// class of false positive without another live bridge inspection.
+const clampToRange = (value: number, range?: { min: number; max: number }): number =>
+  range ? Math.min(range.max, Math.max(range.min, value)) : value
+
 const sceneStateMatches = (
   group: EnrichedGroup,
   lightstates: Record<string, SceneLightState>,
@@ -88,17 +121,30 @@ const sceneStateMatches = (
     const light = group.lightDetails.find((l) => l.id === lightId)
     if (!light) return true // can't verify a light we don't see this tick
     if (!light.state.on) return respectManualOff
-    if (!target.on) return false
+    if (!target.on) {
+      console.warn(
+        `[scheduler] drift: group ${group.id} (${group.name}) light ${lightId} is on but scene target is off`
+      )
+      return false
+    }
     if (
       target.bri !== undefined &&
       Math.abs((light.state.bri ?? 0) - target.bri) > 1
-    )
+    ) {
+      console.warn(
+        `[scheduler] drift: group ${group.id} (${group.name}) light ${lightId} bri=${light.state.bri} target=${target.bri}`
+      )
       return false
-    if (
-      target.ct !== undefined &&
-      Math.abs((light.state.ct ?? 0) - target.ct) > 1
-    )
-      return false
+    }
+    if (target.ct !== undefined) {
+      const achievableCt = clampToRange(target.ct, light.capabilities?.control?.ct)
+      if (Math.abs((light.state.ct ?? 0) - achievableCt) > 1) {
+        console.warn(
+          `[scheduler] drift: group ${group.id} (${group.name}) light ${lightId} ct=${light.state.ct} target=${target.ct}`
+        )
+        return false
+      }
+    }
     return true
   })
 
@@ -278,17 +324,20 @@ export const processSchedule = async (
     const nowMin = now.getHours() * 60 + now.getMinutes()
     const slot = schedule.slots.find((s) => inSlot(nowMin, s))
 
-    const prevSlotId = lastActiveSlot.get(schedule.groupId) ?? null
-    const currSlotId = slot?.id ?? null
-    const enteringSlot = currSlotId !== prevSlotId
+    const prevSceneKey = lastAppliedScene.get(schedule.groupId) ?? null
+    const currSceneKey = sceneKey(slot)
+    const enteringSlot = currSceneKey !== prevSceneKey
 
     if (slot) {
       if (slot.sceneType === 'off') {
         await setGroupAction(schedule.groupId, { on: false })
-        lastActiveSlot.set(schedule.groupId, currSlotId)
+        lastAppliedScene.set(schedule.groupId, currSceneKey)
       } else if (!group) {
+        console.warn(
+          `[scheduler] group ${schedule.groupId} missing from this tick's enriched groups -- skipping, will retry next tick`
+        )
         // Left unlatched deliberately (see schedules.test.ts, "retries after
-        // a group lookup miss") -- do not set lastActiveSlot here.
+        // a group lookup miss") -- do not set lastAppliedScene here.
       } else {
         const hasLinkedSwitch = switchCoverage?.get(schedule.groupId) ?? false
 
@@ -301,10 +350,10 @@ export const processSchedule = async (
         if (needsApply) {
           await applySceneSlot(schedule.groupId, slot, group, hasLinkedSwitch)
         }
-        lastActiveSlot.set(schedule.groupId, currSlotId)
+        lastAppliedScene.set(schedule.groupId, currSceneKey)
       }
     } else {
-      lastActiveSlot.set(schedule.groupId, currSlotId)
+      lastAppliedScene.set(schedule.groupId, currSceneKey)
     }
   }
 }

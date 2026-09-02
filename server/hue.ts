@@ -24,6 +24,16 @@ export interface LightState {
   mode?: string
 }
 
+// A light's own hardware limits, as reported by the bridge -- e.g. a color-
+// temperature bulb whose `ct` range doesn't reach as far as some scenes
+// assume. Optional because plenty of lights (and every unit test fixture)
+// have no such restriction worth tracking.
+export interface LightCapabilities {
+  control?: {
+    ct?: { min: number; max: number }
+  }
+}
+
 export interface Light {
   id: string
   name: string
@@ -32,6 +42,7 @@ export interface Light {
   manufacturername: string
   productname: string
   modelid: string
+  capabilities?: LightCapabilities
 }
 
 export interface GroupState {

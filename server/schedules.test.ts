@@ -44,7 +44,8 @@ const callsFor = (fn: string) => calls.filter((c) => c.fn === fn)
 
 const light = (
   id: string,
-  state: LightState = { on: true, bri: 200, ct: 350, reachable: true }
+  state: LightState = { on: true, bri: 200, ct: 350, reachable: true },
+  capabilities?: Light['capabilities']
 ): Light => ({
   id,
   name: `Light ${id}`,
@@ -52,7 +53,8 @@ const light = (
   manufacturername: '',
   productname: '',
   modelid: '',
-  state
+  state,
+  capabilities
 })
 
 const group = (id: string, lights: Light[]): EnrichedGroup => ({
@@ -250,6 +252,96 @@ test('a manually-off light does not count as drift, so it is not flicked back on
   ])
   await processSchedule(s, oneManuallyOff, null, switchCoverage, now)
   assert.equal(callsFor('activateScene').length, 1)
+})
+
+test('crossing into a new slot that shares the previous slot\'s scene does not re-flicker a manually-off light', async () => {
+  const groupId = 'same-scene-boundary'
+  const eveningSlot: TimeSlot = {
+    id: 'evening',
+    startTime: '21:00',
+    endTime: '23:55',
+    sceneId: 'nightlight',
+    sceneType: 'static'
+  }
+  const predawnSlot: TimeSlot = {
+    id: 'predawn',
+    startTime: '00:00',
+    endTime: '06:00',
+    sceneId: 'nightlight',
+    sceneType: 'static'
+  }
+  const s = schedule(groupId, { slots: [eveningSlot, predawnSlot] })
+  const switchCoverage = new Map([[groupId, true]])
+  sceneLightstates['nightlight'] = {
+    '1': { on: true, bri: 1, ct: 500 },
+    '2': { on: true, bri: 1, ct: 500 }
+  }
+
+  const g = group(groupId, [
+    light('1', { on: true, bri: 1, ct: 500, reachable: true }),
+    light('2', { on: false, bri: 1, ct: 500, reachable: true })
+  ])
+
+  // 22:00: entering the evening slot applies the scene once; light '2' was
+  // already manually off, so it gets the one expected on/off restore cycle.
+  await processSchedule(
+    s,
+    g,
+    null,
+    switchCoverage,
+    new Date(2026, 0, 1, 22, 0)
+  )
+  assert.equal(callsFor('activateScene').length, 1)
+  assert.equal(callsFor('setLightState').length, 1)
+
+  // 00:30: crosses into the pre-dawn slot, but it's the exact same scene --
+  // must not re-trigger a scene recall (which would flicker light '2' on
+  // again).
+  await processSchedule(
+    s,
+    g,
+    null,
+    switchCoverage,
+    new Date(2026, 0, 1, 0, 30)
+  )
+  assert.equal(callsFor('activateScene').length, 1)
+  assert.equal(callsFor('setLightState').length, 1)
+})
+
+test('a light whose hardware ct range falls short of the scene target is not treated as permanent drift', async () => {
+  const groupId = 'ct-capped'
+  const slot = allDaySlot(groupId)
+  const s = schedule(groupId, { slots: [slot] })
+  const now = new Date()
+  const switchCoverage = new Map([[groupId, true]])
+  sceneLightstates[slot.sceneId] = {
+    '1': { on: true, bri: 1, ct: 500 },
+    '2': { on: true, bri: 1, ct: 500 }
+  }
+
+  // Light '1' can only reach ct 454 in hardware -- the bridge clamps any
+  // request past that and reports the clamped value back, forever short of
+  // the scene's stored target of 500.
+  const cappedLight = light(
+    '1',
+    { on: true, bri: 1, ct: 454, reachable: true },
+    { control: { ct: { min: 250, max: 454 } } }
+  )
+  const manuallyOffLight = light('2', { on: false, bri: 1, ct: 500, reachable: true })
+  const g = group(groupId, [cappedLight, manuallyOffLight])
+
+  // Entering the slot applies the scene once, restoring the manually-off
+  // light per the usual single-tick flicker.
+  await processSchedule(s, g, null, switchCoverage, now)
+  assert.equal(callsFor('activateScene').length, 1)
+  assert.equal(callsFor('setLightState').length, 1)
+
+  // A later tick, still mid-slot: light '1' is exactly as clamped and
+  // therefore not drifted, so this must not re-trigger a scene recall (which
+  // would flicker light '2' on again).
+  await processSchedule(s, g, null, switchCoverage, now)
+  assert.equal(callsFor('activateScene').length, 1)
+  assert.equal(callsFor('setLightState').length, 1)
 })
 
 test('a smart scene is only activated on entry, never reapplied mid-slot', async () => {

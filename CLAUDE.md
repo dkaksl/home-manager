@@ -6,7 +6,7 @@
 - Tests are scenario-level, not line-by-line: they lock down *requirements* (what a kill switch does, what manual-off preservation does at the room and light level, what drift-correction does and doesn't touch, what a smart scene never gets) rather than exercising every branch. When adding scheduler behavior, prefer one new scenario test over several micro-tests of internal steps.
 - `server/schedules.test.ts` tests `processSchedule` (the per-room per-tick decision, exported from `server/schedules.ts` specifically so it's reachable without going through the full `tick()` orchestration — file I/O, bridge fetches, the tick loop itself). It mocks `server/hue.ts`'s bridge-touching exports by reassigning them on the shared CJS module object (`import hue = require('./hue')`, not `import * as hue`, since only the `require` form is mutable for this) — no mocking library needed.
 - **Claude should always run `npm test` (and `npx tsc --noEmit -p .`) to verify a change before reporting it as done** — this is a hard requirement here, not a suggestion. Verification means the suite actually ran and passed, not that the change looks correct on inspection.
-- A pre-push git hook runs the suite and blocks the push on failure. It's installed via `.githooks/pre-push`, wired up by `git config core.hooksPath .githooks` (runs automatically on `npm install` via the `prepare` script in package.json). Don't bypass it with `--no-verify`.
+- A pre-push git hook runs the suite and typechecks, blocking the push if either fails. It's installed via `.githooks/pre-push`, wired up by `git config core.hooksPath .githooks` (runs automatically on `npm install` via the `prepare` script in package.json). Don't bypass it with `--no-verify`.
 
 ## Comments
 

@@ -42,6 +42,8 @@ See [Incident 6](#incident-6-2026-08-27--edge-trigger-latches-before-the-scene-i
 | 08-26 15:58 | `5d72937` | **Incident 3** fix (part 1) — `setInterval` → self-rescheduling `setTimeout` + try/catch per tick |
 | 08-26 16:08 | `ad1cba0` | **Incident 3** fix (part 2) — heartbeat file + independent systemd watchdog timer |
 | 08-27 | `a7e6c60` *(deployed as of 10:13:40)* | **Incident 6** — fixed edge-trigger latch bug from `983cf9f` |
+| 09-02 | *(uncommitted)* | **Incident 7** — a separate, real bug found while investigating: adjacent slots sharing a scene re-trigger a recall at the boundary |
+| 09-02 | *(uncommitted)* | **Incident 8** — actual root cause of the "Nere" flicker report: an unreachable `ct` target caused a scene recall (and drift-check false positive) on every tick |
 
 ## Incident 1 — 2026-08-18 23:37: uncaught fetch error kills the process
 
@@ -184,14 +186,119 @@ for the rest of the slot ([server/schedules.ts:271-297](../server/schedules.ts#L
 `origin` and redeployed; the Pi is now running `0872341`, a descendant of `a7e6c60`, and
 the fix's code is confirmed present in the file on disk.
 
+## Incident 7 — 2026-09-02: same-scene slot boundary re-triggers a recall, flickering manually-off lights
+
+Reported: two lights in room "Nere" (group 1) that had been manually turned off overnight,
+while the "Nightlight" scene was active, flickered on and then went off again. Initial
+report from memory ("I thought we fixed this already") pointed at the class of bug
+Incident 6 covers. This turned out to be a **real, separate bug** found while
+investigating — but not the one that actually caused the reported flicker; see Incident 8
+below for that. Documented here anyway since it's a genuine defect with its own fix and
+test, distinct from both Incident 6 and Incident 8.
+
+The room's schedule (`data/schedules.json` on the Pi) has two separate slots that both
+point at the same static scene, `X6BUTnsmlSdSdrX` ("Nightlight"): 21:00–23:55 and
+00:00–06:00. Confirmed via the bridge (`GET /scenes/X6BUTnsmlSdSdrX`) that this scene
+targets all 5 of the room's lights `on:true`, and that group 1 has a linked switch (sensor
+`2`, "Hue dimmer nere"), so `respectManualOff` is true for this room — the journal itself
+had nothing to show, since neither a scene recall nor a drift correction logged anything at
+the time (see Incident 8, which closes that gap).
+
+Root cause, present since `983cf9f`/`a7e6c60` and not something Incident 6 touched: the
+entering-a-slot check compared `TimeSlot.id`, not the scene it points at
+([server/schedules.ts:291-293](../server/schedules.ts#L291-L293), pre-fix). At the 00:00
+boundary the active `TimeSlot` object changes (a new slot with a new `id` becomes active)
+even though its `sceneId`/`sceneType` are identical to the slot that was just active. That
+made `enteringSlot` true, which forces `needsApply = true` unconditionally
+(`processSchedule`'s static-scene drift check is only consulted `if (!needsApply)` — see
+[server/schedules.ts:305-309](../server/schedules.ts#L305-L309), pre-fix) — a full
+`applySceneSlot` call even though nothing about the desired state changed.
+`applySceneSlot` recalls the scene on the whole group (turning every light in it on,
+including the two the user had switched off), then restores the previously-off lights
+after a 500ms sleep. That restore is the *intended* short flicker for a genuine slot
+change ([server/schedules.ts:192-197](../server/schedules.ts#L192-L197)) — but firing it at
+a boundary where the scene didn't actually change is pure regression, and for a `smart`
+scene this same path would additionally restart its dynamic cycling on the bridge, per the
+existing comment at [server/schedules.ts:63](../server/schedules.ts#L63) (pre-fix).
+
+Fix (uncommitted): the latch (`lastActiveSlot`, renamed `lastAppliedScene`) is now keyed on
+`` `${slot.sceneType}:${slot.sceneId}` `` instead of `slot.id`
+([server/schedules.ts:63-72](../server/schedules.ts#L63-L72)). Two adjacent slots with the
+same scene no longer look like an "entering" transition, so no recall fires and no
+manually-off light gets flicked on. Covered by a new scenario test,
+`schedules.test.ts`: "crossing into a new slot that shares the previous slot's scene does
+not re-flicker a manually-off light" — confirmed it fails against the pre-fix code
+(2 `activateScene` calls instead of 1) and passes against the fix. `npm test` and
+`npx tsc --noEmit -p .` both pass.
+
+**Not yet deployed** — this fix is only in the local working tree as of 2026-09-02; it
+still needs to be committed, pushed, and redeployed to the Pi before tonight's Nightlight
+slots.
+
+## Incident 8 — 2026-09-02: an unreachable `ct` target drives a scene recall every tick, flickering any manually-off light in the room
+
+The actual explanation for the Incident 7 report: the user clarified the flicker wasn't a
+single blip at a slot boundary — it repeated every ~60s tick, continuously, for 2–3
+minutes, and only stopped once they gave up and left the two lights on. That ruled out
+Incident 7's mechanism (which can only fire once, at a boundary) and pointed at the
+mid-slot drift-correction path instead (`sceneStateMatches`,
+[server/schedules.ts](../server/schedules.ts)), which runs on *every* tick a static scene
+is active.
+
+Confirmed live against the real bridge (`$RPI_IP`, group 1, 23:13 on 2026-09-02, well
+inside the 21:00–23:55 Nightlight slot):
+
+```
+$ curl .../lights/2   # "Matbordet", IKEA TRÅDFRI bulb
+{"state": {"on": true, "bri": 1, "ct": 454, ...}, "capabilities": {"control": {"ct": {"min": 250, "max": 454}}}, ...}
+```
+
+The "Nightlight" scene's stored target for lights `2` ("Matbordet") and `5` ("Bokhylla") —
+both the same IKEA TRÅDFRI model — is `ct: 500`. Both bulbs' hardware caps out at `ct: 454`
+([capabilities.control.ct.max](../server/hue.ts)); the bridge silently clamps any request
+past that and reports back the clamped value, which sits 46 mireds outside
+`sceneStateMatches`'s ±1 tolerance. That makes the drift check return false — for these two
+lights specifically — on *every single tick* the Nightlight scene is active, regardless of
+what else in the room is doing. That is a group-level recall: it doesn't matter which two
+lights the user manually switched off, since a mismatch anywhere in the scene's lightstates
+forces `applySceneSlot` to run on the whole group again. A repeated identical recall is
+invisible when everything's already at the (achievable) target — but it forces every
+manually-off light in the room back on and then off again, every tick, for as long as it's
+left off. This fully explains the report, including why it stopped the moment the user
+left the two lights on (nothing left to visibly correct, whether or not the underlying
+per-tick recall of lights `2`/`5` kept happening silently in the background).
+
+No log line existed to distinguish this from a real, fixable drift — `sceneStateMatches`
+only returned a boolean. Confirmed by directly reasoning through the code plus the one live
+bridge check above; not confirmed from the journal, since nothing was logged at the time.
+
+Fix:
+- `sceneStateMatches` now clamps a scene's `ct` target into the light's own reported
+  `capabilities.control.ct` range before comparing
+  ([server/schedules.ts:90-148](../server/schedules.ts#L90-L148)), so a light that's
+  already at the closest it can physically get no longer reads as permanently drifted.
+  `Light` gained an optional `capabilities` field to carry this
+  ([server/hue.ts](../server/hue.ts)) — the bridge already returns it, this just types it.
+- Every remaining mismatch (a genuine, fixable drift) is now logged via `console.warn`,
+  naming the group, light, and attribute, so a recurrence — this class or a new one — is
+  diagnosable from `journalctl -u hue-manager | grep drift` without another live bridge
+  session.
+- The `!group` lookup-miss branch (an open item from Incident 6) now also logs, closing
+  that gap too.
+
+Covered by a new scenario test, `schedules.test.ts`: "a light whose hardware ct range falls
+short of the scene target is not treated as permanent drift" — confirmed it fails against
+the pre-fix comparison (2 `activateScene` calls instead of 1, i.e. the false drift
+re-triggers a recall) and passes with the clamp. `npm test` (14/14) and
+`npx tsc --noEmit -p .` both pass.
+
+**Not yet deployed** — uncommitted, alongside the Incident 7 fix, as of 2026-09-02.
+
 ## Recommendations / open items
 
 - **Every deploy-triggered restart in the journal required a `SIGKILL`**, not a graceful
   stop (`Killing process N (V8Worker/SignalInspector/DelayedTaskSche)` appears on every
   single restart since 08-16). Not scheduling-specific, but worth a separate look —
   `ts-node`/the TS compiler worker doesn't appear to exit cleanly on `SIGTERM`.
-- **Silent skips still aren't logged.** The `group` lookup miss that caused Incident 6
-  produces no log line even after the fix — the retry will happen, but there's no
-  visibility into how often it occurs. Worth a `console.warn` when `group` is undefined
-  for a schedule that's in `relevant`, so a recurring bridge issue is visible before it
-  causes another stuck room.
+- ~~**Silent skips still aren't logged.**~~ Closed by Incident 8: the `group` lookup miss
+  from Incident 6 and every static-scene drift mismatch now log via `console.warn`.

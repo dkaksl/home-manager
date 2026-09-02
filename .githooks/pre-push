@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Installed via `npm install`'s prepare script (package.json), which runs
-# `git config core.hooksPath .githooks`. Blocks the push if the suite fails.
+# `git config core.hooksPath .githooks`. Blocks the push if tests or
+# typechecking fail.
 set -euo pipefail
 
 npm test
+npx tsc --noEmit -p .
