@@ -294,6 +294,59 @@ re-triggers a recall) and passes with the clamp. `npm test` (14/14) and
 
 **Not yet deployed** — uncommitted, alongside the Incident 7 fix, as of 2026-09-02.
 
+## Incident 9 — 2026-09-04: a partial smart-scene recall left two lights stuck at the overnight scene's brightness
+
+Reported: room "Nere" (group 1) looked wrong mid-morning — still dim, as if the overnight
+Nightlight scene were active, well after the 07:00 boundary into the day's smart scene
+("Natural Light"). The service was healthy (running `3e8b333`, the Incident 7/8 fix, with a
+fresh heartbeat) and ticking with no errors logged around the 07:00 transition.
+
+Confirmed live against the bridge: the smart scene itself was correctly `active` and mapped
+to the right room, and 3 of the room's 5 lights (the plain white lamps) had already jumped
+to the new target brightness. But the 2 IKEA TRÅDFRI bulbs (`Matbordet`, `Bokhylla` —
+the same two hardware-limited bulbs from Incident 8) were still at the overnight scene's
+`bri: 1`, minutes after the slot switched. `ct` on those two *had* moved (clamped up to
+their hardware minimum of 250, since the smart scene's target of `mirek: 156` is below what
+they can physically reach) — so the recall clearly reached the bridge and partially applied,
+it just didn't fully propagate to every light in one shot.
+
+Root cause: `activateSmartScene` ([server/hue.ts:236-245](../server/hue.ts#L236)) never
+inspected its response, and — unlike static scenes — a smart scene's target is never
+re-checked after entry ([server/schedules.ts](../server/schedules.ts), pre-fix comment on
+`lastAppliedScene`: "re-activating one mid-slot would restart its dynamic cycling"). So a
+recall that landed on the bridge but didn't fully propagate to every light had no way to
+ever get corrected — the room would stay wrong for the rest of the slot, up to 13 hours in
+this case, with nothing logged to say so.
+
+Fix: smart scenes now get a bounded post-entry convergence check instead of being left
+untouched entirely. On entry, `activateSmartScene` is still called exactly once, same as
+before. For up to `SMART_SCENE_CONVERGENCE_TICKS` (5) ticks afterward, the scheduler fetches
+the smart scene's currently-active target lightstates (new
+`getSmartSceneTargetLightstates`, [server/hue.ts:309-338](../server/hue.ts#L309) — resolves
+the v2 smart-scene resource's active timeslot to a target scene, then that scene's
+per-light actions, converting v2's `dimming`/`color_temperature` fields and v2-to-v1 light
+ids along the way) and nudges any light that hasn't caught up directly via `setLightState`
+([server/schedules.ts:201-233](../server/schedules.ts#L201)) — never by re-calling
+`activateSmartScene`, which would risk restarting the scene's own bridge-side cycling. Once
+every light matches, or the tick budget runs out, checking stops until the next slot change;
+a scene that never converges within the budget is logged via `console.warn` rather than
+retried forever, so a genuine stuck light (vs. this transient propagation delay) is
+diagnosable the same way static-scene drift already is (Incident 8).
+
+The drift-comparison logic itself (`findLightMismatches`, refactored out of the old
+`sceneStateMatches`) is unchanged for static scenes — it's the same tolerance and
+`ct`-clamping behavior as before, just reused so smart-scene convergence and static-scene
+drift share one implementation instead of two.
+
+Covered by new scenario tests in `schedules.test.ts`: a light that lags for a couple of
+ticks gets nudged directly (and the smart scene is never re-activated) until it matches; a
+light that never converges stops being nudged after the bounded number of ticks and doesn't
+resume; a manually-off light is left alone during convergence, same as the existing
+static-scene manual-off protection. `npm test` (17/17) and `npx tsc --noEmit -p .` both pass.
+
+**Not yet deployed** — as of 2026-09-04, this fix exists only in the local working tree; it
+still needs to be committed, pushed, and redeployed to the Pi.
+
 ## Recommendations / open items
 
 - **Every deploy-triggered restart in the journal required a `SIGKILL`**, not a graceful

@@ -9,6 +9,7 @@ import {
   activateScene,
   activateSmartScene,
   getSceneLightstates,
+  getSmartSceneTargetLightstates,
   EnrichedGroup,
   SceneLightState
 } from './hue'
@@ -112,20 +113,35 @@ const getCachedSceneLightstates = async (
 const clampToRange = (value: number, range?: { min: number; max: number }): number =>
   range ? Math.min(range.max, Math.max(range.min, value)) : value
 
-const sceneStateMatches = (
+interface LightMismatch {
+  id: string
+  target: SceneLightState
+}
+
+// Shared by the static-scene drift check and the smart-scene convergence
+// check below: both need to know exactly which lights don't match a set of
+// target lightstates yet, not just whether the room as a whole matches.
+const findLightMismatches = (
   group: EnrichedGroup,
   lightstates: Record<string, SceneLightState>,
   respectManualOff: boolean
-): boolean =>
-  Object.entries(lightstates).every(([lightId, target]) => {
+): LightMismatch[] => {
+  const mismatches: LightMismatch[] = []
+
+  for (const [lightId, target] of Object.entries(lightstates)) {
     const light = group.lightDetails.find((l) => l.id === lightId)
-    if (!light) return true // can't verify a light we don't see this tick
-    if (!light.state.on) return respectManualOff
+    if (!light) continue // can't verify a light we don't see this tick
+
+    if (!light.state.on) {
+      if (!respectManualOff) mismatches.push({ id: lightId, target })
+      continue
+    }
     if (!target.on) {
       console.warn(
         `[scheduler] drift: group ${group.id} (${group.name}) light ${lightId} is on but scene target is off`
       )
-      return false
+      mismatches.push({ id: lightId, target })
+      continue
     }
     if (
       target.bri !== undefined &&
@@ -134,7 +150,8 @@ const sceneStateMatches = (
       console.warn(
         `[scheduler] drift: group ${group.id} (${group.name}) light ${lightId} bri=${light.state.bri} target=${target.bri}`
       )
-      return false
+      mismatches.push({ id: lightId, target })
+      continue
     }
     if (target.ct !== undefined) {
       const achievableCt = clampToRange(target.ct, light.capabilities?.control?.ct)
@@ -142,11 +159,82 @@ const sceneStateMatches = (
         console.warn(
           `[scheduler] drift: group ${group.id} (${group.name}) light ${lightId} ct=${light.state.ct} target=${target.ct}`
         )
-        return false
+        mismatches.push({ id: lightId, target })
       }
     }
-    return true
-  })
+  }
+
+  return mismatches
+}
+
+const sceneStateMatches = (
+  group: EnrichedGroup,
+  lightstates: Record<string, SceneLightState>,
+  respectManualOff: boolean
+): boolean => findLightMismatches(group, lightstates, respectManualOff).length === 0
+
+// How many ticks after entering a smart-scene slot to keep checking whether
+// the room actually reached the scene's target, before giving up. Confirmed
+// live (see docs/scheduling-incident-history.md, Incident 9): a smart
+// scene's `recall: activate` can land on the bridge but not fully propagate
+// to every light in one shot -- two IKEA TRÅDFRI bulbs stayed at the
+// overnight scene's brightness for several minutes after the slot switched,
+// while the room's other lights updated immediately. Smart scenes are
+// otherwise never touched again after entry (re-activating one mid-slot
+// would restart its bridge-side cycling, per `applySceneSlot`'s comment), so
+// without this a partial recall would stay wrong for the rest of the slot.
+const SMART_SCENE_CONVERGENCE_TICKS = 5
+
+interface SmartSceneConvergence {
+  sceneKey: string | null
+  ticksRemaining: number
+}
+const smartSceneConvergence = new Map<string, SmartSceneConvergence>()
+
+// Nudges any light that hasn't caught up to the smart scene's current target
+// directly via `setLightState`, rather than re-sending `activateSmartScene`
+// -- a direct per-light push can't restart the smart scene's own dynamic
+// cycling the way re-activating the whole scene would. Bounded to
+// `SMART_SCENE_CONVERGENCE_TICKS` ticks so a light that's stuck for a real
+// reason (unreachable, bridge issue) doesn't get fought forever; a lingering
+// mismatch after that is logged instead, same as static-scene drift.
+const verifySmartSceneConvergence = async (
+  groupId: string,
+  slot: TimeSlot,
+  group: EnrichedGroup,
+  respectManualOff: boolean,
+  currSceneKey: string | null
+): Promise<void> => {
+  const convergence = smartSceneConvergence.get(groupId)
+  if (!convergence || convergence.sceneKey !== currSceneKey) return
+
+  const lightstates = await getSmartSceneTargetLightstates(slot.sceneId)
+  const mismatches = findLightMismatches(group, lightstates, respectManualOff)
+
+  if (!mismatches.length) {
+    smartSceneConvergence.delete(groupId)
+    return
+  }
+
+  if (convergence.ticksRemaining <= 1) {
+    console.warn(
+      `[scheduler] group ${groupId} (${group.name}): smart scene still hasn't converged after ${SMART_SCENE_CONVERGENCE_TICKS} ticks -- giving up until the next slot change`
+    )
+    smartSceneConvergence.delete(groupId)
+    return
+  }
+
+  convergence.ticksRemaining -= 1
+  await Promise.all(
+    mismatches.map(({ id, target }) =>
+      setLightState(id, {
+        on: target.on,
+        ...(target.bri !== undefined && { bri: target.bri }),
+        ...(target.ct !== undefined && { ct: target.ct })
+      })
+    )
+  )
+}
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -349,6 +437,20 @@ export const processSchedule = async (
 
         if (needsApply) {
           await applySceneSlot(schedule.groupId, slot, group, hasLinkedSwitch)
+          if (slot.sceneType === 'smart') {
+            smartSceneConvergence.set(schedule.groupId, {
+              sceneKey: currSceneKey,
+              ticksRemaining: SMART_SCENE_CONVERGENCE_TICKS
+            })
+          }
+        } else if (slot.sceneType === 'smart') {
+          await verifySmartSceneConvergence(
+            schedule.groupId,
+            slot,
+            group,
+            hasLinkedSwitch,
+            currSceneKey
+          )
         }
         lastAppliedScene.set(schedule.groupId, currSceneKey)
       }

@@ -244,6 +244,102 @@ export const activateSmartScene = async (smartSceneId: string) => {
   return res.json()
 }
 
+// v2 resource ids don't match the v1 numeric light ids used everywhere else
+// in this app -- every v2 resource carries its v1-API equivalent back in
+// `id_v1` (e.g. "/lights/2"), which is how one maps to the other.
+const getV2LightIdMap = async (): Promise<Record<string, string>> => {
+  const res = await fetch(`${v2Base()}/light`, {
+    headers: v2Headers(),
+    dispatcher: v2Agent,
+    signal: withTimeout()
+  } as Parameters<typeof fetch>[1])
+  const json = (await res.json()) as {
+    data: Array<{ id: string; id_v1?: string }>
+  }
+  return Object.fromEntries(
+    json.data
+      .filter((l) => l.id_v1)
+      .map((l) => [l.id, l.id_v1!.replace('/lights/', '')])
+  )
+}
+
+interface V2SmartSceneTimeslot {
+  target: { rid: string }
+}
+interface V2SmartScene {
+  week_timeslots: Array<{ timeslots: V2SmartSceneTimeslot[]; recurrence: string[] }>
+  active_timeslot?: { timeslot_id: number; weekday: string }
+}
+
+// A smart scene cycles through several target static scenes over the day on
+// the bridge's own clock (see `activateSmartScene`'s comment). This looks up
+// which one is current, so a caller can verify the room actually reached it
+// rather than just trusting the `recall: activate` call above succeeded.
+const getSmartSceneActiveTargetSceneId = async (
+  smartSceneId: string
+): Promise<string | null> => {
+  const res = await fetch(`${v2Base()}/smart_scene/${smartSceneId}`, {
+    headers: v2Headers(),
+    dispatcher: v2Agent,
+    signal: withTimeout()
+  } as Parameters<typeof fetch>[1])
+  const json = (await res.json()) as { data: V2SmartScene[] }
+  const smartScene = json.data[0]
+  const active = smartScene?.active_timeslot
+  if (!active) return null
+  const week = smartScene.week_timeslots.find((w) =>
+    w.recurrence.includes(active.weekday)
+  )
+  return week?.timeslots[active.timeslot_id]?.target.rid ?? null
+}
+
+interface V2SceneAction {
+  target: { rid: string }
+  action: {
+    on?: { on: boolean }
+    dimming?: { brightness: number }
+    color_temperature?: { mirek: number }
+  }
+}
+
+// The per-light targets of whichever static scene a smart scene is
+// currently cycled to, in the same shape `getSceneLightstates` returns for a
+// plain static scene -- so callers can verify convergence with the same
+// comparison logic regardless of scene type.
+export const getSmartSceneTargetLightstates = async (
+  smartSceneId: string
+): Promise<Record<string, SceneLightState>> => {
+  const targetSceneId = await getSmartSceneActiveTargetSceneId(smartSceneId)
+  if (!targetSceneId) return {}
+
+  const [sceneRes, v2LightIds] = await Promise.all([
+    fetch(`${v2Base()}/scene/${targetSceneId}`, {
+      headers: v2Headers(),
+      dispatcher: v2Agent,
+      signal: withTimeout()
+    } as Parameters<typeof fetch>[1]),
+    getV2LightIdMap()
+  ])
+  const json = (await sceneRes.json()) as {
+    data: Array<{ actions: V2SceneAction[] }>
+  }
+  const actions = json.data[0]?.actions ?? []
+
+  const lightstates: Record<string, SceneLightState> = {}
+  for (const { target, action } of actions) {
+    const v1Id = v2LightIds[target.rid]
+    if (!v1Id || !action.on) continue
+    lightstates[v1Id] = {
+      on: action.on.on,
+      ...(action.dimming && {
+        bri: Math.round((action.dimming.brightness / 100) * 254)
+      }),
+      ...(action.color_temperature && { ct: action.color_temperature.mirek })
+    }
+  }
+  return lightstates
+}
+
 export const activateScene = async (groupId: string, sceneId: string) => {
   const res = await fetch(`${apiBase()}/groups/${groupId}/action`, {
     method: 'PUT',

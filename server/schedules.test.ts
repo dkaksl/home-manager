@@ -16,6 +16,7 @@ interface Call {
 }
 let calls: Call[] = []
 let sceneLightstates: Record<string, Record<string, SceneLightState>> = {}
+let smartSceneLightstates: Record<string, Record<string, SceneLightState>> = {}
 
 const record =
   (fn: string) =>
@@ -32,12 +33,15 @@ const mutableHue = hue as unknown as Record<string, unknown>
 beforeEach(() => {
   calls = []
   sceneLightstates = {}
+  smartSceneLightstates = {}
   mutableHue.setGroupAction = record('setGroupAction')
   mutableHue.activateScene = record('activateScene')
   mutableHue.activateSmartScene = record('activateSmartScene')
   mutableHue.setLightState = record('setLightState')
   mutableHue.getSceneLightstates = async (sceneId: string) =>
     sceneLightstates[sceneId] ?? {}
+  mutableHue.getSmartSceneTargetLightstates = async (sceneId: string) =>
+    smartSceneLightstates[sceneId] ?? {}
 })
 
 const callsFor = (fn: string) => calls.filter((c) => c.fn === fn)
@@ -355,4 +359,97 @@ test('a smart scene is only activated on entry, never reapplied mid-slot', async
 
   await processSchedule(s, g, null, null, now)
   assert.equal(callsFor('activateSmartScene').length, 1)
+})
+
+test('a smart scene light that has not caught up yet is nudged directly (not re-activated) until it converges', async () => {
+  const groupId = 'smart-converge'
+  const slot = allDaySlot(groupId, 'smart')
+  const s = schedule(groupId, { slots: [slot] })
+  const now = new Date()
+  smartSceneLightstates[slot.sceneId] = { '1': { on: true, bri: 254, ct: 156 } }
+
+  // Entering the slot activates the smart scene once; the light hasn't
+  // caught up to the new target yet (still at the previous scene's values).
+  const lagging = group(groupId, [
+    light('1', { on: true, bri: 1, ct: 250, reachable: true })
+  ])
+  await processSchedule(s, lagging, null, null, now)
+  assert.equal(callsFor('activateSmartScene').length, 1)
+  assert.equal(callsFor('setLightState').length, 0)
+
+  // Next tick, still lagging: nudged directly via setLightState rather than
+  // re-activating the smart scene, which would restart its own cycling.
+  await processSchedule(s, lagging, null, null, now)
+  assert.equal(callsFor('activateSmartScene').length, 1)
+  assert.deepEqual(callsFor('setLightState').map((c) => c.args), [
+    ['1', { on: true, bri: 254, ct: 156 }]
+  ])
+
+  // Once the light actually reaches the target, it's left alone.
+  const caughtUp = group(groupId, [
+    light('1', { on: true, bri: 254, ct: 156, reachable: true })
+  ])
+  await processSchedule(s, caughtUp, null, null, now)
+  assert.equal(callsFor('setLightState').length, 1)
+  assert.equal(callsFor('activateSmartScene').length, 1)
+})
+
+test('a smart scene light that never converges stops being nudged after a bounded number of ticks', async () => {
+  const groupId = 'smart-stuck'
+  const slot = allDaySlot(groupId, 'smart')
+  const s = schedule(groupId, { slots: [slot] })
+  const now = new Date()
+  smartSceneLightstates[slot.sceneId] = { '1': { on: true, bri: 254, ct: 156 } }
+  const stuck = group(groupId, [
+    light('1', { on: true, bri: 1, ct: 250, reachable: true })
+  ])
+
+  await processSchedule(s, stuck, null, null, now) // entry: activates once
+  for (let i = 0; i < 10; i++) {
+    await processSchedule(s, stuck, null, null, now)
+  }
+
+  assert.equal(callsFor('activateSmartScene').length, 1)
+  const nudgesWhileGivingUp = callsFor('setLightState').length
+  assert.ok(
+    nudgesWhileGivingUp > 0 && nudgesWhileGivingUp < 10,
+    `expected a bounded number of nudges before giving up, got ${nudgesWhileGivingUp}`
+  )
+
+  // Further ticks must not resume nudging once it's given up.
+  await processSchedule(s, stuck, null, null, now)
+  assert.equal(callsFor('setLightState').length, nudgesWhileGivingUp)
+})
+
+test('a manually-off light is not nudged while a smart scene is converging', async () => {
+  const groupId = 'smart-manual-off'
+  const slot = allDaySlot(groupId, 'smart')
+  const s = schedule(groupId, { slots: [slot] })
+  const now = new Date()
+  const switchCoverage = new Map([[groupId, true]])
+  smartSceneLightstates[slot.sceneId] = {
+    '1': { on: true, bri: 254, ct: 156 },
+    '2': { on: true, bri: 254, ct: 156 }
+  }
+
+  const g = group(groupId, [
+    light('1', { on: true, bri: 1, ct: 250, reachable: true }),
+    light('2', { on: false, bri: 1, ct: 250, reachable: true })
+  ])
+
+  // Entry activates the scene and restores light '2' (manually off) back
+  // off, per the usual single-tick flicker -- unrelated to convergence.
+  await processSchedule(s, g, null, switchCoverage, now)
+  assert.deepEqual(callsFor('setLightState').map((c) => c.args), [
+    ['2', { on: false }]
+  ])
+
+  // Convergence tick: light '1' hasn't caught up and gets nudged; light '2'
+  // is legitimately off (respected, since the room has a linked switch) and
+  // must not be nudged back on to "fix" it.
+  await processSchedule(s, g, null, switchCoverage, now)
+  assert.deepEqual(callsFor('setLightState').map((c) => c.args), [
+    ['2', { on: false }],
+    ['1', { on: true, bri: 254, ct: 156 }]
+  ])
 })
