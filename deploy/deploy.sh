@@ -27,19 +27,35 @@ REPO_URL="https://github.com/dkaksl/home-manager.git"
 APP_DIR="$HOME/home-manager"
 SERVICE_NAME="hue-manager"
 
+echo "==> Fetching repository"
+if [[ -d "$APP_DIR/.git" ]]; then
+  git -C "$APP_DIR" pull
+else
+  git clone "$REPO_URL" "$APP_DIR"
+fi
+
+# The pull above can rewrite this very file. bash already had it open when
+# the run started, and git replaces (rather than edits in place) a changed
+# file on pull, so without this, everything below would keep running from
+# that now-unlinked, pre-pull copy for the rest of the run -- silently
+# ignoring any fix that just landed in the same pull. Confirmed live: this is
+# exactly how a fixed `npm install --no-audit` kept being skipped on a
+# self-triggered re-deploy, even though the file on disk (and `git log`) both
+# showed the fix already pulled. Re-exec once, from the path on disk rather
+# than `$0` (which isn't a real file when this script is streamed in via
+# `bash -s <`), to guarantee everything after this point runs from the
+# current, post-pull content.
+if [[ -z "${DEPLOY_SH_REEXECUTED:-}" ]]; then
+  export DEPLOY_SH_REEXECUTED=1
+  exec bash "$APP_DIR/deploy/deploy.sh"
+fi
+
 echo "==> Checking Node.js"
 NODE_MAJOR=$(node --version 2>/dev/null | sed -E 's/^v([0-9]+).*/\1/' || echo 0)
 if [[ "$NODE_MAJOR" -lt 24 ]]; then
   echo "    Installing Node.js 24.x via NodeSource"
   curl -fsSL https://deb.nodesource.com/setup_24.x | sudo -E bash -
   sudo apt-get install -y nodejs
-fi
-
-echo "==> Fetching repository"
-if [[ -d "$APP_DIR/.git" ]]; then
-  git -C "$APP_DIR" pull
-else
-  git clone "$REPO_URL" "$APP_DIR"
 fi
 
 echo "==> Installing dependencies"
