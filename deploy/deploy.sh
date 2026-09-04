@@ -44,7 +44,11 @@ fi
 
 echo "==> Installing dependencies"
 cd "$APP_DIR"
-npm install
+# --no-audit: the post-install audit call to the registry has been observed
+# to hang indefinitely on this device after packages are already fully
+# installed, stalling the deploy for no benefit (a deploy is not the place
+# to be blocked on a vulnerability report anyway).
+npm install --no-audit
 
 echo "==> Installing systemd units"
 sed \
