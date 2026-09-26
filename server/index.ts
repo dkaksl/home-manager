@@ -14,6 +14,7 @@ import {
   activateSmartScene
 } from './hue'
 import { getSchedules, setSchedule, startScheduler } from './schedules'
+import { syncSwitchLocks } from './switchLocks'
 import { requireAuth } from './auth'
 
 config()
@@ -131,6 +132,17 @@ app.put('/api/rooms/:id/kill-switch', async (req, res) => {
       slots: []
     }
     setSchedule(req.params.id, { ...existing, killSwitch: enabled })
+    // Not fatal: the kill switch itself is already saved, and the next
+    // scheduler tick retries the lock.
+    try {
+      await syncSwitchLocks(
+        Object.values(getSchedules())
+          .filter((s) => s.killSwitch)
+          .map((s) => s.groupId)
+      )
+    } catch (err) {
+      console.error('[switch-locks] sync failed:', err)
+    }
     if (enabled) await setGroupAction(req.params.id, { on: false })
     res.json({ ok: true })
   } catch (err) {

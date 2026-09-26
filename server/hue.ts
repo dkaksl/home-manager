@@ -350,6 +350,93 @@ export const activateScene = async (groupId: string, sceneId: string) => {
   return res.json()
 }
 
+// v1 group id → v2 room id. v2 rooms carry their v1 path in `id_v1`
+// ("/groups/1"), which unlike the name-matching in getV2ToV1GroupMap can't
+// collide between two groups that share a name.
+export const getRoomIdMap = async (): Promise<Record<string, string>> => {
+  const res = await fetch(`${v2Base()}/room`, {
+    headers: v2Headers(),
+    dispatcher: v2Agent,
+    signal: withTimeout()
+  } as Parameters<typeof fetch>[1])
+  const json = (await res.json()) as {
+    data: Array<{ id: string; id_v1?: string }>
+  }
+  return Object.fromEntries(
+    json.data
+      .filter((r) => r.id_v1)
+      .map((r) => [r.id_v1!.replace('/groups/', ''), r.id])
+  )
+}
+
+// What a physical switch does is not stored on the switch or in a v1 rule:
+// the Hue app keeps it as a v2 `behavior_instance` (script "Generic switches
+// script"), one per switch, mapping each button id to its handlers
+// (`on_short_release`, `on_long_press`, `on_repeat`) and the group they act
+// on (`where`). Its opaque shape is kept as-is so a saved copy can be written
+// back unchanged.
+export interface SwitchButtonConfig {
+  where?: Array<{ group?: { rid: string; rtype: string } }>
+  [handler: string]: unknown
+}
+
+export interface SwitchBehaviorConfig {
+  buttons: Record<string, SwitchButtonConfig>
+  [key: string]: unknown
+}
+
+export interface SwitchBehavior {
+  id: string
+  name: string
+  configuration: SwitchBehaviorConfig
+}
+
+export const getSwitchBehaviors = async (): Promise<SwitchBehavior[]> => {
+  const res = await fetch(`${v2Base()}/behavior_instance`, {
+    headers: v2Headers(),
+    dispatcher: v2Agent,
+    signal: withTimeout()
+  } as Parameters<typeof fetch>[1])
+  const json = (await res.json()) as {
+    data: Array<{
+      id: string
+      metadata?: { name?: string }
+      configuration?: { buttons?: unknown }
+    }>
+  }
+  return json.data
+    .filter((b) => b.configuration?.buttons)
+    .map((b) => ({
+      id: b.id,
+      name: b.metadata?.name ?? b.id,
+      configuration: b.configuration as SwitchBehaviorConfig
+    }))
+}
+
+// The bridge rejects `enabled: false` on switch behaviors ("The instance
+// doesn't support triggers."), so the only way to silence a switch is to
+// rewrite its configuration. A config that fails the script's JSON schema
+// comes back as a non-empty `errors` array with the instance left untouched.
+export const setSwitchBehaviorConfiguration = async (
+  id: string,
+  configuration: SwitchBehaviorConfig
+) => {
+  const res = await fetch(`${v2Base()}/behavior_instance/${id}`, {
+    method: 'PUT',
+    headers: { ...v2Headers(), 'Content-Type': 'application/json' },
+    dispatcher: v2Agent,
+    body: JSON.stringify({ configuration }),
+    signal: withTimeout()
+  } as Parameters<typeof fetch>[1])
+  const json = (await res.json()) as { errors?: Array<{ description: string }> }
+  if (json.errors?.length) {
+    throw new Error(
+      `behavior_instance ${id} rejected: ${json.errors.map((e) => e.description).join('; ')}`
+    )
+  }
+  return json
+}
+
 export interface Sensor {
   id: string
   name: string

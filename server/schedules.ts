@@ -13,6 +13,7 @@ import {
   EnrichedGroup,
   SceneLightState
 } from './hue'
+import { syncSwitchLocks } from './switchLocks'
 
 const SCHEDULES_FILE = path.join(process.cwd(), 'data', 'schedules.json')
 
@@ -463,6 +464,20 @@ export const processSchedule = async (
 const tick = async () => {
   const tickStart = new Date()
   const data = load()
+
+  // Runs before the nothing-to-do early return below, since releasing the
+  // last kill switch leaves nothing relevant but still has switches to
+  // restore. Also retries a lock or restore the kill-switch endpoint failed.
+  try {
+    await syncSwitchLocks(
+      Object.values(data)
+        .filter((s) => s.killSwitch)
+        .map((s) => s.groupId)
+    )
+  } catch (err) {
+    console.error('[switch-locks] sync failed:', err)
+  }
+
   const relevant = Object.values(data).filter(
     (s) =>
       s.killSwitch || s.autoOff?.enabled || (s.enabled && s.slots.length > 0)
