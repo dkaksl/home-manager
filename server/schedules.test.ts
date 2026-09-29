@@ -1,7 +1,7 @@
 import { test, beforeEach } from 'node:test'
 import assert from 'node:assert/strict'
 import hue = require('./hue')
-import { processSchedule } from './schedules'
+import { processSchedule, switchLockRooms } from './schedules'
 import type { RoomSchedule, TimeSlot } from './schedules'
 import type { EnrichedGroup, Light, LightState, SceneLightState } from './hue'
 
@@ -452,4 +452,31 @@ test('a manually-off light is not nudged while a smart scene is converging', asy
     ['2', { on: false }],
     ['1', { on: true, bri: 254, ct: 156 }]
   ])
+})
+
+test('a room\'s switches are cut to power-only exactly while one of its slots is running, and fully locked while killed', () => {
+  const evening: TimeSlot = {
+    id: 'evening',
+    startTime: '18:00',
+    endTime: '23:00',
+    sceneId: 'scene-evening',
+    sceneType: 'static'
+  }
+  const night: TimeSlot = {
+    id: 'night',
+    startTime: '23:00',
+    endTime: '06:00',
+    sceneId: 'off',
+    sceneType: 'off'
+  }
+  const schedules: Record<string, RoomSchedule> = {
+    '1': { groupId: '1', enabled: true, slots: [evening, night] },
+    '3': { groupId: '3', enabled: false, slots: [evening] },
+    '6': { groupId: '6', enabled: true, slots: [evening], killSwitch: true }
+  }
+  const at = (hh: number) => switchLockRooms(schedules, new Date(2026, 8, 29, hh, 30))
+
+  assert.deepEqual(at(19), { killed: ['6'], powerOnly: ['1'] })
+  assert.deepEqual(at(2), { killed: ['6'], powerOnly: ['1'] })
+  assert.deepEqual(at(12), { killed: ['6'], powerOnly: [] })
 })

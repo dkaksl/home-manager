@@ -45,6 +45,7 @@ See [Incident 6](#incident-6-2026-08-27--edge-trigger-latches-before-the-scene-i
 | 09-02 | *(uncommitted)* | **Incident 7** — a separate, real bug found while investigating: adjacent slots sharing a scene re-trigger a recall at the boundary |
 | 09-02 | *(uncommitted)* | **Incident 8** — actual root cause of the "Nere" flicker report: an unreachable `ct` target caused a scene recall (and drift-check false positive) on every tick |
 | 09-26 | *(uncommitted)* | Kill switch was defeatable by pressing the room's dimmer between ticks — it now also rewrites that dimmer's buttons to do nothing (`server/switchLocks.ts`), restoring the original config on release. Switchless rooms keep the per-tick force-off only |
+| 09-29 | *(uncommitted)* | Dimming a scheduled room by hand made its lights bounce, because the next tick's drift correction undid it. While any of a room's slots is running, its dimmer is now cut down to the power button (`control_id` 1) and the other buttons do nothing. The switch is restored when the slot ends. A kill switch still silences every button, including power |
 
 ## Incident 1 — 2026-08-18 23:37: uncaught fetch error kills the process
 

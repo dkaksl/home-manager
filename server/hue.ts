@@ -413,6 +413,25 @@ export const getSwitchBehaviors = async (): Promise<SwitchBehavior[]> => {
     }))
 }
 
+// v2 button id → its position on the switch (`metadata.control_id`). The
+// behavior_instance keys buttons by id only, so this is the one way to tell
+// which of a switch's buttons is which.
+export const getButtonControlIds = async (): Promise<Record<string, number>> => {
+  const res = await fetch(`${v2Base()}/button`, {
+    headers: v2Headers(),
+    dispatcher: v2Agent,
+    signal: withTimeout()
+  } as Parameters<typeof fetch>[1])
+  const json = (await res.json()) as {
+    data: Array<{ id: string; metadata?: { control_id?: number } }>
+  }
+  return Object.fromEntries(
+    json.data
+      .filter((b) => typeof b.metadata?.control_id === 'number')
+      .map((b) => [b.id, b.metadata!.control_id!])
+  )
+}
+
 // The bridge rejects `enabled: false` on switch behaviors ("The instance
 // doesn't support triggers."), so the only way to silence a switch is to
 // rewrite its configuration. A config that fails the script's JSON schema

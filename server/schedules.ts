@@ -13,7 +13,7 @@ import {
   EnrichedGroup,
   SceneLightState
 } from './hue'
-import { syncSwitchLocks } from './switchLocks'
+import { syncSwitchLocks, LockedRooms } from './switchLocks'
 
 const SCHEDULES_FILE = path.join(process.cwd(), 'data', 'schedules.json')
 
@@ -301,6 +301,30 @@ const inSlot = (nowMin: number, slot: TimeSlot): boolean => {
   return s <= e ? nowMin >= s && nowMin < e : nowMin >= s || nowMin < e
 }
 
+const activeSlot = (schedule: RoomSchedule, now: Date): TimeSlot | undefined => {
+  if (!schedule.enabled) return undefined
+  const nowMin = now.getHours() * 60 + now.getMinutes()
+  return schedule.slots.find((s) => inSlot(nowMin, s))
+}
+
+// An "off" slot counts too: it forces the room off every tick, which a dim
+// button would turn back on.
+export const switchLockRooms = (
+  schedules: Record<string, RoomSchedule>,
+  now: Date
+): LockedRooms => {
+  const all = Object.values(schedules)
+  return {
+    killed: all.filter((s) => s.killSwitch).map((s) => s.groupId),
+    powerOnly: all
+      .filter((s) => !s.killSwitch && activeSlot(s, now))
+      .map((s) => s.groupId)
+  }
+}
+
+export const syncRoomSwitches = (now: Date = new Date()) =>
+  syncSwitchLocks(switchLockRooms(load(), now))
+
 // `respectManualOff` is false for rooms with no linked wall switch (see
 // `getSwitchSensorIds`), since a breaker-only room's "off" bridge state can't
 // be trusted as a deliberate override — there's no switch to press, and
@@ -410,8 +434,7 @@ export const processSchedule = async (
   }
 
   if (schedule.enabled && schedule.slots.length) {
-    const nowMin = now.getHours() * 60 + now.getMinutes()
-    const slot = schedule.slots.find((s) => inSlot(nowMin, s))
+    const slot = activeSlot(schedule, now)
 
     const prevSceneKey = lastAppliedScene.get(schedule.groupId) ?? null
     const currSceneKey = sceneKey(slot)
@@ -466,14 +489,11 @@ const tick = async () => {
   const data = load()
 
   // Runs before the nothing-to-do early return below, since releasing the
-  // last kill switch leaves nothing relevant but still has switches to
-  // restore. Also retries a lock or restore the kill-switch endpoint failed.
+  // last kill switch or slot ending leaves nothing relevant but still has
+  // switches to restore. Also follows slot boundaries, and retries a lock or
+  // restore an endpoint failed.
   try {
-    await syncSwitchLocks(
-      Object.values(data)
-        .filter((s) => s.killSwitch)
-        .map((s) => s.groupId)
-    )
+    await syncSwitchLocks(switchLockRooms(data, tickStart))
   } catch (err) {
     console.error('[switch-locks] sync failed:', err)
   }

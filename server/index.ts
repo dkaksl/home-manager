@@ -13,8 +13,12 @@ import {
   activateScene,
   activateSmartScene
 } from './hue'
-import { getSchedules, setSchedule, startScheduler } from './schedules'
-import { syncSwitchLocks } from './switchLocks'
+import {
+  getSchedules,
+  setSchedule,
+  startScheduler,
+  syncRoomSwitches
+} from './schedules'
 import { requireAuth } from './auth'
 
 config()
@@ -135,11 +139,7 @@ app.put('/api/rooms/:id/kill-switch', async (req, res) => {
     // Not fatal: the kill switch itself is already saved, and the next
     // scheduler tick retries the lock.
     try {
-      await syncSwitchLocks(
-        Object.values(getSchedules())
-          .filter((s) => s.killSwitch)
-          .map((s) => s.groupId)
-      )
+      await syncRoomSwitches()
     } catch (err) {
       console.error('[switch-locks] sync failed:', err)
     }
@@ -158,9 +158,15 @@ app.get('/api/schedules', (_req, res) => {
   }
 })
 
-app.put('/api/schedules/:groupId', (req, res) => {
+app.put('/api/schedules/:groupId', async (req, res) => {
   try {
     setSchedule(req.params.groupId, req.body)
+    // Not fatal, as for the kill switch: the next tick retries.
+    try {
+      await syncRoomSwitches()
+    } catch (err) {
+      console.error('[switch-locks] sync failed:', err)
+    }
     res.json({ ok: true })
   } catch (err) {
     hueError(err, res)
