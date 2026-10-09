@@ -88,7 +88,8 @@ one restarts its cycle.
 **Room/device lookups (v2):**
 ```bash
 curl -sk -H "$H" $V2/room   | jq -c '.data[]|{id,name:.metadata.name,id_v1}'
-curl -sk -H "$H" $V2/device | jq -c '.data[]|select(any(.services[];.rtype=="button"))|{id,name:.metadata.name,id_v1}'
+curl -sk -H "$H" $V2/device | jq -c '.data[]|select(any(.services[];.rtype=="button"))|{id,name:.metadata.name,id_v1,model:.product_data.model_id}'
+curl -sk -H "$H" $V2/button | jq -c '.data[]|{id,control_id:.metadata.control_id,device:.owner.rid}'
 ```
 
 ## Switch button mappings (`behavior_instance`)
@@ -100,8 +101,27 @@ What a dimmer does is a v2 `behavior_instance` running the
 curl -sk -H "$H" $V2/behavior_instance | jq -c '.data[]|select(.configuration.buttons)|{id,name:.metadata.name}'
 ```
 
-`configuration.buttons` maps each v2 `button` id to its handlers and target:
+`configuration.buttons` maps each v2 `button` id to its handlers and target.
+The ids alone don't say which physical button is which. For that, look up
+each id's `metadata.control_id` in `$V2/button`. On the RWL022 (verified
+2026-09-29 on all three dimmers):
 
+| control_id | Button | Handlers in the config |
+|---|---|---|
+| 1 | Power (toggle) | `on_short_release: time_based_extended` with `with_off.enabled: true`, `on_long_press` |
+| 2 | Dim up | `on_repeat: {action: dim_up}` |
+| 3 | Dim down | `on_repeat: {action: dim_down}` |
+| 4 | Hue (scene cycle) | `on_short_release: scene_cycle_extended`, `on_long_press` |
+
+Older dimmers (RWL020/021) have a separate "off" button at control_id 4.
+There isn't one on this bridge.
+
+The power button's `time_based_extended` is what the Hue app calls "time
+based light" with **smart on/off** (`with_off`). One press recalls the
+scene for the current time slot, or turns the room off if it's already on.
+**Repeat presses within `repeat_timeout` (3s here) step to the next slot's
+scene**, so a few quick presses reach any scene in the list, including the
+brightest one.
 ```jsonc
 "<button id>": {
   "on_short_release": { "time_based_extended": { ...slots of scene recalls... } },
@@ -139,10 +159,39 @@ curl -sk -X PUT -H "$H" -H 'Content-Type: application/json' -d @restore.json $V2
 curl -sk -H "$H" $V2/behavior_instance/$ID | jq -S '.data[0]' | diff before.json - && echo identical
 ```
 
-home-manager's kill switch does exactly this, per room, in
-`server/switchLocks.ts`. Its originals are in `data/switch-locks.json`.
-**Don't hand-edit a switch whose room has an active kill switch**, because
-the app expects to restore it.
+A config where only some buttons are silenced is accepted too. This was
+verified live on 2026-09-29 on the Nere and Kontoret dimmers, and the
+untouched power button read back identical.
+
+The bridge also accepts a power button cut down to a **single
+`time_based_extended` slot** (`start_time` 00:00) whose `recall` is either a
+`scene` or a `smart_scene` (`rtype: "smart_scene"`, v2 smart-scene id). This
+was verified live on 2026-10-09 on the Sovrummet dimmer, then restored
+byte-identical. Whether a physical press then actually activates a smart
+scene hasn't been checked yet.
+
+home-manager does exactly this, per room, in `server/switchLocks.ts`:
+
+- **Kill switch on:** every button bound to the room is silenced.
+- **An `off` slot is running:** the same as a kill switch.
+- **A scene slot is running:** every button except the power button
+  (control_id 1) is silenced. The power button is **pinned** to a single
+  slot that recalls the schedule slot's scene, keeping smart on/off. Static
+  slots store a v1 scene id, which is mapped to the v2 id via `id_v1`.
+  Without the pin, manual dimming or power-button cycling would be undone
+  by the next tick's drift correction, and the lights would bounce. If the
+  scene is missing from the bridge, the power button is silenced instead.
+
+Every mode is rebuilt from one saved original, so the switch is restored
+exactly when the room leaves them all. When the slot changes to another
+scene, the power button is re-pinned. The originals and the rooms last
+applied (`silenced`, and `pinned` with each room's scene) are in
+`data/switch-locks.json`. **Don't hand-edit a
+switch whose room is killed or mid-slot**, because the app expects to
+restore it. If a switch was reconfigured in the Hue app while locked, the
+app keeps that new configuration instead of the saved original. To find
+out why a dimmer "does nothing", compare its buttons against that file
+first.
 
 ## Before writing anything
 
