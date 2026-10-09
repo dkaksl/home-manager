@@ -307,19 +307,25 @@ const activeSlot = (schedule: RoomSchedule, now: Date): TimeSlot | undefined => 
   return schedule.slots.find((s) => inSlot(nowMin, s))
 }
 
-// An "off" slot counts too: it forces the room off every tick, which a dim
-// button would turn back on.
+// An "off" slot has no scene to pin the power button to, and it forces the
+// room off every tick, so its switches are silenced like a killed room's.
 export const switchLockRooms = (
   schedules: Record<string, RoomSchedule>,
   now: Date
 ): LockedRooms => {
-  const all = Object.values(schedules)
-  return {
-    killed: all.filter((s) => s.killSwitch).map((s) => s.groupId),
-    powerOnly: all
-      .filter((s) => !s.killSwitch && activeSlot(s, now))
-      .map((s) => s.groupId)
+  const rooms: LockedRooms = { silenced: [], pinned: {} }
+  for (const s of Object.values(schedules)) {
+    const slot = s.killSwitch ? undefined : activeSlot(s, now)
+    if (s.killSwitch || slot?.sceneType === 'off') {
+      rooms.silenced.push(s.groupId)
+    } else if (slot) {
+      rooms.pinned[s.groupId] = {
+        sceneId: slot.sceneId,
+        sceneType: slot.sceneType
+      }
+    }
   }
+  return rooms
 }
 
 export const syncRoomSwitches = (now: Date = new Date()) =>

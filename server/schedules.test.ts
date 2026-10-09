@@ -454,7 +454,7 @@ test('a manually-off light is not nudged while a smart scene is converging', asy
   ])
 })
 
-test('a room\'s switches are cut to power-only exactly while one of its slots is running, and fully locked while killed', () => {
+test('a room\'s power button is pinned to the running slot\'s scene, and its switches are fully silenced in an off slot or while killed', () => {
   const evening: TimeSlot = {
     id: 'evening',
     startTime: '18:00',
@@ -476,7 +476,10 @@ test('a room\'s switches are cut to power-only exactly while one of its slots is
   }
   const at = (hh: number) => switchLockRooms(schedules, new Date(2026, 8, 29, hh, 30))
 
-  assert.deepEqual(at(19), { killed: ['6'], powerOnly: ['1'] })
-  assert.deepEqual(at(2), { killed: ['6'], powerOnly: ['1'] })
-  assert.deepEqual(at(12), { killed: ['6'], powerOnly: [] })
+  assert.deepEqual(at(19), {
+    silenced: ['6'],
+    pinned: { '1': { sceneId: 'scene-evening', sceneType: 'static' } }
+  })
+  assert.deepEqual(at(2), { silenced: ['1', '6'], pinned: {} })
+  assert.deepEqual(at(12), { silenced: ['6'], pinned: {} })
 })

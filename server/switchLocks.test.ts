@@ -32,6 +32,10 @@ beforeEach(() => {
     '3': 'room-kontoret',
     '82': 'room-lekrummet'
   })
+  mutableHue.getSceneIdMap = async () => ({
+    'v1-evening': 'scene-evening',
+    'v1-night': 'scene-night'
+  })
   mutableHue.getButtonControlIds = async () => controlIds
   mutableHue.getSwitchBehaviors = async () => {
     fetches++
@@ -48,21 +52,36 @@ beforeEach(() => {
   }
 })
 
-const none = { killed: [], powerOnly: [] }
-const killed = (...ids: string[]) => ({ killed: ids, powerOnly: [] })
-const powerOnly = (...ids: string[]) => ({ killed: [], powerOnly: ids })
+const none = { silenced: [], pinned: {} }
+const killed = (...ids: string[]) => ({ silenced: ids, pinned: {} })
+const scheduled = (groupId: string, sceneId: string, sceneType: 'static' | 'smart' = 'static') => ({
+  silenced: [],
+  pinned: { [groupId]: { sceneId, sceneType } }
+})
 
 const where = (rid: string) => [{ group: { rid, rtype: 'room' } }]
 
-// Shaped like the real RWL022 dimmer config: on/off and hue buttons with
-// press/long-press handlers, dim buttons with a repeat handler only.
+const recall = (rid: string, rtype = 'scene') => ({ action: { recall: { rid, rtype } } })
+
+// Shaped like the real RWL022 dimmer config: a "time based light" power
+// button with smart on/off, a hue button, both with press/long-press
+// handlers, and dim buttons with a repeat handler only.
 const dimmer = (id: string, rooms: [string, string, string, string]): SwitchBehavior => ({
   id,
   name: `Dimmer ${id}`,
   configuration: {
     buttons: {
       on: {
-        on_short_release: { time_based_extended: { slots: [], with_off: { enabled: true } } },
+        on_short_release: {
+          time_based_extended: {
+            repeat_timeout: { seconds: 3 },
+            slots: [
+              { actions: [recall('scene-bright')], start_time: { hour: 7, minute: 0 } },
+              { actions: [recall('scene-evening')], start_time: { hour: 19, minute: 0 } }
+            ],
+            with_off: { enabled: true }
+          }
+        },
         on_long_press: { action: 'do_nothing' },
         where: where(rooms[0])
       },
@@ -162,13 +181,28 @@ test('a lock that failed halfway is retried without losing the already-locked sw
   assert.deepEqual(bridge.get('b'), b)
 })
 
-test('a scheduled room\'s switch keeps only its power button, and the schedule ending restores the switch exactly', async () => {
+const pinnedTo = (button: Record<string, unknown>) => {
+  const tbe = (button.on_short_release as {
+    time_based_extended: { slots: Array<{ actions: unknown[] }>; with_off: unknown }
+  }).time_based_extended
+  return {
+    actions: tbe.slots.map((slot) => slot.actions),
+    withOff: tbe.with_off,
+    longPress: button.on_long_press
+  }
+}
+
+test('a scheduled room\'s power button recalls only the slot\'s scene, the rest is silenced, and the schedule ending restores the switch exactly', async () => {
   const nere = add(dimmer('nere', ['room-nere', 'room-nere', 'room-nere', 'room-nere']))
 
-  await syncSwitchLocks(powerOnly('1'), file)
+  await syncSwitchLocks(scheduled('1', 'v1-evening'), file)
 
   const locked = bridge.get('nere')!.configuration.buttons
-  assert.deepEqual(locked.on, nere.configuration.buttons.on)
+  assert.deepEqual(pinnedTo(locked.on), {
+    actions: [[recall('scene-evening')]],
+    withOff: { enabled: true },
+    longPress: { action: 'do_nothing' }
+  })
   assert.ok(isSilenced(locked.up) && isSilenced(locked.down) && isSilenced(locked.hue))
 
   await syncSwitchLocks(none, file)
@@ -176,18 +210,51 @@ test('a scheduled room\'s switch keeps only its power button, and the schedule e
   assert.deepEqual(bridge.get('nere'), nere)
 })
 
-test('killing a scheduled room silences its power button too, and releasing the kill switch mid-slot gives only the power button back', async () => {
+test('moving to a slot with another scene re-pins the power button, and the original still comes back afterwards', async () => {
   const nere = add(dimmer('nere', ['room-nere', 'room-nere', 'room-nere', 'room-nere']))
 
-  await syncSwitchLocks(powerOnly('1'), file)
-  await syncSwitchLocks({ killed: ['1'], powerOnly: ['1'] }, file)
+  await syncSwitchLocks(scheduled('1', 'v1-evening'), file)
+  await syncSwitchLocks(scheduled('1', 'v1-night'), file)
+
+  assert.deepEqual(pinnedTo(bridge.get('nere')!.configuration.buttons.on).actions, [
+    [recall('scene-night')]
+  ])
+
+  await syncSwitchLocks(none, file)
+
+  assert.deepEqual(bridge.get('nere'), nere)
+})
+
+test('a smart scene slot pins the power button to the smart scene itself', async () => {
+  add(dimmer('nere', ['room-nere', 'room-nere', 'room-nere', 'room-nere']))
+
+  await syncSwitchLocks(scheduled('1', 'smart-natural', 'smart'), file)
+
+  assert.deepEqual(pinnedTo(bridge.get('nere')!.configuration.buttons.on).actions, [
+    [recall('smart-natural', 'smart_scene')]
+  ])
+})
+
+test('a slot whose scene is missing from the bridge silences the power button rather than leaving every scene reachable', async () => {
+  add(dimmer('nere', ['room-nere', 'room-nere', 'room-nere', 'room-nere']))
+
+  await syncSwitchLocks(scheduled('1', 'v1-deleted'), file)
+
+  assert.ok(isSilenced(bridge.get('nere')!.configuration.buttons.on))
+})
+
+test('killing a scheduled room silences its power button too, and releasing the kill switch mid-slot gives back only the pinned power button', async () => {
+  const nere = add(dimmer('nere', ['room-nere', 'room-nere', 'room-nere', 'room-nere']))
+
+  await syncSwitchLocks(scheduled('1', 'v1-evening'), file)
+  await syncSwitchLocks({ ...scheduled('1', 'v1-evening'), silenced: ['1'] }, file)
 
   assert.ok(isSilenced(bridge.get('nere')!.configuration.buttons.on))
 
-  await syncSwitchLocks(powerOnly('1'), file)
+  await syncSwitchLocks(scheduled('1', 'v1-evening'), file)
 
   const locked = bridge.get('nere')!.configuration.buttons
-  assert.deepEqual(locked.on, nere.configuration.buttons.on)
+  assert.deepEqual(pinnedTo(locked.on).actions, [[recall('scene-evening')]])
   assert.ok(isSilenced(locked.up))
 
   await syncSwitchLocks(none, file)

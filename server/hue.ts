@@ -369,6 +369,24 @@ export const getRoomIdMap = async (): Promise<Record<string, string>> => {
   )
 }
 
+// v1 scene id → v2 scene id. Switch configurations recall scenes by v2 id
+// only, while static schedule slots store the v1 id.
+export const getSceneIdMap = async (): Promise<Record<string, string>> => {
+  const res = await fetch(`${v2Base()}/scene`, {
+    headers: v2Headers(),
+    dispatcher: v2Agent,
+    signal: withTimeout()
+  } as Parameters<typeof fetch>[1])
+  const json = (await res.json()) as {
+    data: Array<{ id: string; id_v1?: string }>
+  }
+  return Object.fromEntries(
+    json.data
+      .filter((s) => s.id_v1)
+      .map((s) => [s.id_v1!.replace('/scenes/', ''), s.id])
+  )
+}
+
 // What a physical switch does is not stored on the switch or in a v1 rule:
 // the Hue app keeps it as a v2 `behavior_instance` (script "Generic switches
 // script"), one per switch, mapping each button id to its handlers
