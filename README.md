@@ -10,7 +10,7 @@ A local web app for managing Philips Hue lights. Provides a room-oriented UI for
 | ---------- | ------------------------------------------ |
 | Server     | Node.js + Express + TypeScript (`ts-node`) |
 | Client     | React 18 + Vite + TypeScript               |
-| Bridge API | Hue v1 (`http`) + Hue v2 (`https/CLIP`)    |
+| Bridge API | Hue v1 + v2 (CLIP), over verified HTTPS    |
 
 ## Getting started
 
@@ -24,12 +24,15 @@ npm run create-user
 
 This writes your application key to `output/authenticated-users.txt`.
 
+All traffic to the bridge, pairing included, goes over HTTPS. The bridge's certificate must chain to the Hue root CA and name `HUE_BRIDGE_ID`, or the request fails, so set `HUE_BRIDGE_ID` (see below) before pairing. This lets you turn off unsecured connections in the Hue app.
+
 ### 2. Configure environment
 
 Create a `.env` file in the project root:
 
 ```ini
 HUE_IP=192.168.x.x                   # IP address of your Hue bridge
+HUE_BRIDGE_ID=001788fffe000000       # Your bridge's ID (Hue app > Settings > Bridges), checked against its TLS certificate
 HUE_USER=<application-key>           # Token from step 1 (or from the Hue developer portal)
 PORT=3001                            # Optional, defaults to 3001
 AUTH_USERS=alice:secret1,bob:secret2 # Required, see "Authentication" below

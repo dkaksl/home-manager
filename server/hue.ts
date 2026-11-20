@@ -1,9 +1,10 @@
-import { Agent } from 'undici'
+import { createBridgeAgent, DEFAULT_HUE_BRIDGE_ID } from './bridgeTls'
 import { config } from 'dotenv'
 
 config()
 
 const HUE_IP = process.env.HUE_IP || '192.168.1.182'
+const HUE_BRIDGE_ID = process.env.HUE_BRIDGE_ID || DEFAULT_HUE_BRIDGE_ID
 const HUE_USER = process.env.HUE_USER?.trim() ?? ''
 
 // Guards against a stalled bridge response wedging the scheduler tick
@@ -70,12 +71,18 @@ const getUser = (): string => {
   return HUE_USER
 }
 
-const apiBase = () => `http://${HUE_IP}/api/${getUser()}`
-
-// v2 API (HTTPS, self-signed cert on bridge)
+const apiBase = () => `https://${HUE_IP}/api/${getUser()}`
 const v2Base = () => `https://${HUE_IP}/clip/v2/resource`
 const v2Headers = () => ({ 'hue-application-key': getUser() })
-const v2Agent = new Agent({ connect: { rejectUnauthorized: false } })
+
+let bridgeAgent: ReturnType<typeof createBridgeAgent> | undefined
+
+// Every request carries the application key (in the v1 URL path, or the v2
+// header), so none may go out unless the peer proved it is this bridge.
+const bridgeFetch = (url: string, init: RequestInit = {}) => {
+  bridgeAgent ??= createBridgeAgent({ bridgeId: HUE_BRIDGE_ID })
+  return fetch(url, { ...init, dispatcher: bridgeAgent } as RequestInit)
+}
 
 // The v1 bridge returns [{error:{type:1,...}}] for an invalid user token
 const assertAuthOk = (json: unknown) => {
@@ -85,7 +92,7 @@ const assertAuthOk = (json: unknown) => {
 }
 
 export const getLights = async (): Promise<Record<string, Light>> => {
-  const res = await fetch(`${apiBase()}/lights`, { signal: withTimeout() })
+  const res = await bridgeFetch(`${apiBase()}/lights`, { signal: withTimeout() })
   const json = await res.json()
   assertAuthOk(json)
   return Object.fromEntries(
@@ -96,7 +103,7 @@ export const getLights = async (): Promise<Record<string, Light>> => {
 }
 
 export const getGroups = async (): Promise<Record<string, Group>> => {
-  const res = await fetch(`${apiBase()}/groups`, { signal: withTimeout() })
+  const res = await bridgeFetch(`${apiBase()}/groups`, { signal: withTimeout() })
   const json = await res.json()
   assertAuthOk(json)
   return Object.fromEntries(
@@ -118,7 +125,7 @@ export const setLightState = async (
   lightId: string,
   state: Partial<LightState>
 ) => {
-  const res = await fetch(`${apiBase()}/lights/${lightId}/state`, {
+  const res = await bridgeFetch(`${apiBase()}/lights/${lightId}/state`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(state),
@@ -138,7 +145,7 @@ export const setGroupAction = async (
   groupId: string,
   action: { on?: boolean; bri?: number }
 ) => {
-  const res = await fetch(`${apiBase()}/groups/${groupId}/action`, {
+  const res = await bridgeFetch(`${apiBase()}/groups/${groupId}/action`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(action),
@@ -148,7 +155,7 @@ export const setGroupAction = async (
 }
 
 export const getScenes = async (): Promise<Scene[]> => {
-  const res = await fetch(`${apiBase()}/scenes`, { signal: withTimeout() })
+  const res = await bridgeFetch(`${apiBase()}/scenes`, { signal: withTimeout() })
   const json = (await res.json()) as Record<
     string,
     { name: string; group?: string; type: string }
@@ -177,7 +184,7 @@ export interface SceneLightState {
 export const getSceneLightstates = async (
   sceneId: string
 ): Promise<Record<string, SceneLightState>> => {
-  const res = await fetch(`${apiBase()}/scenes/${sceneId}`, {
+  const res = await bridgeFetch(`${apiBase()}/scenes/${sceneId}`, {
     signal: withTimeout()
   })
   const json = (await res.json()) as {
@@ -189,11 +196,10 @@ export const getSceneLightstates = async (
 // Returns a map of v2 room UUID → v1 group ID, matched by room name
 const getV2ToV1GroupMap = async (): Promise<Record<string, string>> => {
   const [v2Res, v1Groups] = await Promise.all([
-    fetch(`${v2Base()}/room`, {
+    bridgeFetch(`${v2Base()}/room`, {
       headers: v2Headers(),
-      dispatcher: v2Agent,
       signal: withTimeout()
-    } as Parameters<typeof fetch>[1]),
+    }),
     getGroups()
   ])
   const v2Data = (await v2Res.json()) as {
@@ -209,11 +215,10 @@ const getV2ToV1GroupMap = async (): Promise<Record<string, string>> => {
 
 export const getSmartScenes = async (): Promise<Scene[]> => {
   const [res, v2ToV1] = await Promise.all([
-    fetch(`${v2Base()}/smart_scene`, {
+    bridgeFetch(`${v2Base()}/smart_scene`, {
       headers: v2Headers(),
-      dispatcher: v2Agent,
       signal: withTimeout()
-    } as Parameters<typeof fetch>[1]),
+    }),
     getV2ToV1GroupMap()
   ])
   const json = (await res.json()) as {
@@ -234,13 +239,12 @@ export const getSmartScenes = async (): Promise<Scene[]> => {
 }
 
 export const activateSmartScene = async (smartSceneId: string) => {
-  const res = await fetch(`${v2Base()}/smart_scene/${smartSceneId}`, {
+  const res = await bridgeFetch(`${v2Base()}/smart_scene/${smartSceneId}`, {
     method: 'PUT',
     headers: { ...v2Headers(), 'Content-Type': 'application/json' },
-    dispatcher: v2Agent,
     body: JSON.stringify({ recall: { action: 'activate' } }),
     signal: withTimeout()
-  } as Parameters<typeof fetch>[1])
+  })
   return res.json()
 }
 
@@ -248,11 +252,10 @@ export const activateSmartScene = async (smartSceneId: string) => {
 // in this app -- every v2 resource carries its v1-API equivalent back in
 // `id_v1` (e.g. "/lights/2"), which is how one maps to the other.
 const getV2LightIdMap = async (): Promise<Record<string, string>> => {
-  const res = await fetch(`${v2Base()}/light`, {
+  const res = await bridgeFetch(`${v2Base()}/light`, {
     headers: v2Headers(),
-    dispatcher: v2Agent,
     signal: withTimeout()
-  } as Parameters<typeof fetch>[1])
+  })
   const json = (await res.json()) as {
     data: Array<{ id: string; id_v1?: string }>
   }
@@ -278,11 +281,10 @@ interface V2SmartScene {
 const getSmartSceneActiveTargetSceneId = async (
   smartSceneId: string
 ): Promise<string | null> => {
-  const res = await fetch(`${v2Base()}/smart_scene/${smartSceneId}`, {
+  const res = await bridgeFetch(`${v2Base()}/smart_scene/${smartSceneId}`, {
     headers: v2Headers(),
-    dispatcher: v2Agent,
     signal: withTimeout()
-  } as Parameters<typeof fetch>[1])
+  })
   const json = (await res.json()) as { data: V2SmartScene[] }
   const smartScene = json.data[0]
   const active = smartScene?.active_timeslot
@@ -313,11 +315,10 @@ export const getSmartSceneTargetLightstates = async (
   if (!targetSceneId) return {}
 
   const [sceneRes, v2LightIds] = await Promise.all([
-    fetch(`${v2Base()}/scene/${targetSceneId}`, {
+    bridgeFetch(`${v2Base()}/scene/${targetSceneId}`, {
       headers: v2Headers(),
-      dispatcher: v2Agent,
       signal: withTimeout()
-    } as Parameters<typeof fetch>[1]),
+    }),
     getV2LightIdMap()
   ])
   const json = (await sceneRes.json()) as {
@@ -341,7 +342,7 @@ export const getSmartSceneTargetLightstates = async (
 }
 
 export const activateScene = async (groupId: string, sceneId: string) => {
-  const res = await fetch(`${apiBase()}/groups/${groupId}/action`, {
+  const res = await bridgeFetch(`${apiBase()}/groups/${groupId}/action`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ scene: sceneId }),
@@ -354,11 +355,10 @@ export const activateScene = async (groupId: string, sceneId: string) => {
 // ("/groups/1"), which unlike the name-matching in getV2ToV1GroupMap can't
 // collide between two groups that share a name.
 export const getRoomIdMap = async (): Promise<Record<string, string>> => {
-  const res = await fetch(`${v2Base()}/room`, {
+  const res = await bridgeFetch(`${v2Base()}/room`, {
     headers: v2Headers(),
-    dispatcher: v2Agent,
     signal: withTimeout()
-  } as Parameters<typeof fetch>[1])
+  })
   const json = (await res.json()) as {
     data: Array<{ id: string; id_v1?: string }>
   }
@@ -372,11 +372,10 @@ export const getRoomIdMap = async (): Promise<Record<string, string>> => {
 // v1 scene id → v2 scene id. Switch configurations recall scenes by v2 id
 // only, while static schedule slots store the v1 id.
 export const getSceneIdMap = async (): Promise<Record<string, string>> => {
-  const res = await fetch(`${v2Base()}/scene`, {
+  const res = await bridgeFetch(`${v2Base()}/scene`, {
     headers: v2Headers(),
-    dispatcher: v2Agent,
     signal: withTimeout()
-  } as Parameters<typeof fetch>[1])
+  })
   const json = (await res.json()) as {
     data: Array<{ id: string; id_v1?: string }>
   }
@@ -410,11 +409,10 @@ export interface SwitchBehavior {
 }
 
 export const getSwitchBehaviors = async (): Promise<SwitchBehavior[]> => {
-  const res = await fetch(`${v2Base()}/behavior_instance`, {
+  const res = await bridgeFetch(`${v2Base()}/behavior_instance`, {
     headers: v2Headers(),
-    dispatcher: v2Agent,
     signal: withTimeout()
-  } as Parameters<typeof fetch>[1])
+  })
   const json = (await res.json()) as {
     data: Array<{
       id: string
@@ -435,11 +433,10 @@ export const getSwitchBehaviors = async (): Promise<SwitchBehavior[]> => {
 // behavior_instance keys buttons by id only, so this is the one way to tell
 // which of a switch's buttons is which.
 export const getButtonControlIds = async (): Promise<Record<string, number>> => {
-  const res = await fetch(`${v2Base()}/button`, {
+  const res = await bridgeFetch(`${v2Base()}/button`, {
     headers: v2Headers(),
-    dispatcher: v2Agent,
     signal: withTimeout()
-  } as Parameters<typeof fetch>[1])
+  })
   const json = (await res.json()) as {
     data: Array<{ id: string; metadata?: { control_id?: number } }>
   }
@@ -458,13 +455,12 @@ export const setSwitchBehaviorConfiguration = async (
   id: string,
   configuration: SwitchBehaviorConfig
 ) => {
-  const res = await fetch(`${v2Base()}/behavior_instance/${id}`, {
+  const res = await bridgeFetch(`${v2Base()}/behavior_instance/${id}`, {
     method: 'PUT',
     headers: { ...v2Headers(), 'Content-Type': 'application/json' },
-    dispatcher: v2Agent,
     body: JSON.stringify({ configuration }),
     signal: withTimeout()
-  } as Parameters<typeof fetch>[1])
+  })
   const json = (await res.json()) as { errors?: Array<{ description: string }> }
   if (json.errors?.length) {
     throw new Error(
@@ -487,7 +483,7 @@ export interface Sensor {
 // TRÅDFRI) presence sensors paired directly to the bridge — both expose a
 // boolean `state.presence`, which is what we filter on.
 export const getSensors = async (): Promise<Sensor[]> => {
-  const res = await fetch(`${apiBase()}/sensors`, { signal: withTimeout() })
+  const res = await bridgeFetch(`${apiBase()}/sensors`, { signal: withTimeout() })
   const json = await res.json()
   assertAuthOk(json)
   return Object.entries(json as Record<string, Omit<Sensor, 'id'>>)
@@ -508,7 +504,7 @@ export const getSensors = async (): Promise<Sensor[]> => {
 const SWITCH_SENSOR_TYPES = new Set(['ZLLSwitch', 'ZGPSwitch'])
 
 export const getSwitchSensorIds = async (): Promise<Set<string>> => {
-  const res = await fetch(`${apiBase()}/sensors`, { signal: withTimeout() })
+  const res = await bridgeFetch(`${apiBase()}/sensors`, { signal: withTimeout() })
   const json = await res.json()
   assertAuthOk(json)
   return new Set(

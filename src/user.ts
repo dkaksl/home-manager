@@ -2,18 +2,21 @@ import { cleanEnv, str } from 'envalid'
 import { config } from 'dotenv'
 import { appendFileSync, mkdirSync, existsSync, readFileSync } from 'fs'
 import { OUTPUT_DIR } from './util'
+import { createBridgeAgent, DEFAULT_HUE_BRIDGE_ID } from '../server/bridgeTls'
 
 config()
 
-const { HUE_IP } = cleanEnv(process.env, {
-  HUE_IP: str()
+const { HUE_IP, HUE_BRIDGE_ID } = cleanEnv(process.env, {
+  HUE_IP: str(),
+  HUE_BRIDGE_ID: str({ default: DEFAULT_HUE_BRIDGE_ID })
 })
 
 export const createUser = async () => {
-  const response = await fetch(`http://${HUE_IP}/api`, {
+  const response = await fetch(`https://${HUE_IP}/api`, {
     method: 'POST',
-    body: JSON.stringify({ devicetype: 'my_hue_app#ubuntu_kpc' })
-  })
+    body: JSON.stringify({ devicetype: 'my_hue_app#ubuntu_kpc' }),
+    dispatcher: createBridgeAgent({ bridgeId: HUE_BRIDGE_ID })
+  } as RequestInit)
   const json = await response.json()
   console.log(json)
 
